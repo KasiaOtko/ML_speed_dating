@@ -1,0 +1,157 @@
+---
+title: "SD_dataset"
+author: "Katarzyna Otko"
+date: "4 września 2020"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+ Some text
+```{r, message=F, warning=F}
+library(dplyr)
+library(ggplot2)
+library(reshape2)
+setwd('C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/Project I')
+SD <- read.csv('Speed Dating Data.csv')
+
+# numdim(SDber of rows and columns
+dim(SD)
+
+# number of women
+length(unique(SD$iid[which(SD$gender == 0)])) # 274
+
+# number of men
+length(unique(SD$iid[which(SD$gender == 1)])) # 277
+
+274 + 277
+NAs <- sapply(SD, function(x) sum(is.na(x)))
+sort(NAs[which(NAs > 0)]) 
+
+#filling one missing value in last id row
+SD[which(is.na(SD$id)), 1:2] <- 22
+
+# filling 10 missing values in pid columns
+SD[which(is.na(SD$pid)), 1:15] # partner's id - 7
+SD[which(SD$id == 7 & SD$wave == 5), 1:2] # we have to fill these 10 NAs with 128
+SD[which(is.na(SD$pid)), 'pid'] <- 128
+
+# adding one column with explanation for race column (matching index with race names)
+race_idx <- unique(SD$race)
+race_val <- c('Asian', 'European', 'Other', 'Latino', 'Black', NA)
+SD$race_explained <- race_val[match(SD$race, race_idx)]
+
+# adding one column with explanation for field_cd column (matching index with race names)
+# DISCUSS WITH ALVILS IMPUTING DATA INTO field_cd as 9 (because field is Operations Research)
+field_idx <- c(1:18, NA)
+field_val <- c('Law', 'Math', 'Social Science, Psychologist', 'Medical Science/Pharmaceuticals/Bio Tech',
+               'Engineering', 'English/Creative Writing/ Journalism', 'History/Religion/Philosophy',
+              'Business/Econ/Finance', 'Education, Academia', 'Biological Sciences/Chemistry/Physics', 
+              'Social Work', 'Undergrad/undecided', 'Political Science/International Affairs',
+              'Film', 'Fine Arts/Arts Administration', 'Languages', 'Architecture', 'Other', 'Other')
+SD$field_explained <- field_val[match(SD$field_cd, field_idx)]
+
+
+
+
+#sum(is.na(field_df$field_cd))
+
+# converting income from string to numeric
+SD$income <- as.numeric(gsub(',', "", SD$income, fixed = T))
+  
+sum(is.na(SD$income))
+
+unique(SD$field_cd)
+
+summary(SD[SD$wave >= 6 & SD$wave <= 9,129:134])
+# Waves 6 - 9:
+# attr4_1 - shar4_1 have values between 0 and 10
+# attr2_1 - shar2_1 OK
+# attr1_2 - shar1_2 OK
+
+```
+
+```{r}
+# Age analysis
+sum(is.na(SD$age))
+SD[is.na(SD$age), 1:10]
+
+age_df <- subset(SD, !duplicated(SD[,1])) %>%
+  filter(!is.na(age)) %>%
+  group_by(wave, gender) %>%
+  summarize(Average_age = mean(age))
+
+SD %>% nrow()
+nrow(SD)
+
+age_df$gender <- ifelse(age_df$gender == 0, 'Women', 'Men')
+
+# Mean age per wave
+age_df %>% ggplot(aes(x = wave, y = Average_age, fill = gender)) +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  scale_fill_discrete(name = "Gender") 
+
+age_df <- subset(SD, !duplicated(SD$iid), select = c(iid, gender, age)) %>%
+  filter(!is.na(age)) %>%
+  mutate(mean = mean(age))
+age_df$gender <- ifelse(age_df$gender == 0, 'Women', 'Men')
+
+# Histogram of age
+max(unique(age_df$age)) - min(unique(age_df$age)) # number of bins
+age_df %>% ggplot(aes(x = age)) + 
+  geom_histogram(bins = 37, fill = 'lightgrey', position = 'identity', alpha = .7) +
+  geom_vline(aes(xintercept = mean), col = 'red', linetype = 'dashed')
+```
+
+```{r}
+# Field analysis
+field_df <- subset(SD, !duplicated(SD$iid)) %>%
+  filter(!is.na(field_cd)) %>%
+  group_by(field_explained, gender) %>%
+  summarize(field_sum = n())
+
+field_df$gender <- ifelse(field_df$gender == 0, 'Women', 'Men')
+
+field_df %>% ggplot(aes(x = field_explained, y = field_sum, fill = gender)) + 
+  geom_bar(stat = 'identity', position = 'dodge') + 
+  coord_flip()
+
+```
+
+```{r}
+# Income
+income_df <- subset(SD, !duplicated(SD$iid)) %>%
+  filter(!is.na(income))
+
+income_df$gender <- ifelse(income_df$gender == 0, 'Women', 'Men')
+
+income_df %>% ggplot(aes(x = income/1000, fill = gender)) + 
+  geom_histogram(bins = 15)
+
+```
+
+```{r}
+# Purpose
+goal_df <- subset(SD, !duplicated(SD$iid)) %>%
+  filter(!is.na(goal)) %>%
+  group_by(goal, gender) %>%
+  summarise(count = n())
+
+goal_df$gender <- ifelse(goal_df$gender == 0, 'Women', 'Men')
+
+goal_idx <- unique(goal_df$goal)
+goal_val <- c('Seemed like a fun night out', 'To meet new people', 'To get a date', 
+              'Looking for a serious relationship', 'To say I did it',	'Other')
+goal_df$goal_explained <- goal_val[match(goal_df$goal, goal_idx)]
+
+goal_df %>% ggplot(aes(x = goal_explained, y = count, fill = gender)) + 
+  geom_bar(stat = 'identity', position = 'dodge') +
+  coord_flip()
+
+```
+
+```{r}
+# Importance of features for men/women
+
+```
+
+
