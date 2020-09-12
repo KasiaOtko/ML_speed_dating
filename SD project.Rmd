@@ -17,7 +17,6 @@ SD <- read.csv('Speed Dating Data.csv')
 # numdim(SDber of rows and columns
 dim(SD)
 
-
 # number of women
 length(unique(SD$iid[which(SD$gender == 0)])) # 274
 
