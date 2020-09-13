@@ -30,7 +30,6 @@ library(reshape2)
 setwd('C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/Project I')
 SD <- read.csv('Speed Dating Data.csv')
 
-
 # numdim(SDber of rows and columns
 dim(SD)
 
@@ -41,6 +40,11 @@ length(unique(SD$iid[which(SD$gender == 0)])) # 274
 length(unique(SD$iid[which(SD$gender == 1)])) # 277
 
 274 + 277
+```
+
+
+## Missin values
+```{r}
 NAs <- sapply(SD, function(x) sum(is.na(x)))
 sort(NAs[which(NAs > 0)]) 
 
@@ -51,6 +55,26 @@ SD[which(is.na(SD$id)), 1:2] <- 22
 SD[which(is.na(SD$pid)), 1:15] # partner's id - 7
 SD[which(SD$id == 7 & SD$wave == 5), 1:2] # we have to fill these 10 NAs with 128
 SD[which(is.na(SD$pid)), 'pid'] <- 128
+
+s = 0
+
+NAs <- sapply(df, function(x) sum(is.na(x))); NAs
+NAs_sum <- sum(NAs); NAs_sum
+
+DF <- SD[, 70:75]
+df <- DF[!complete.cases(DF),]
+dim(df); sum(rowSums(df, na.rm = T) == 100) # so there are 42 rows where we can impute 0s
+df[which(df[,1] + df[,2] + df[,3] == 100),]
+df[which(df[,1] + df[,2] + df[,3] == 100), c(4:6)] <- 0
+
+df[which(df[,1] + df[,2] + df[,3] + df[,4] == 100),]
+df[which(df[,1] + df[,2] + df[,3] + df[,4] == 100), c(5:6)] <- 0
+
+df[which(df[,1] + df[,2] + df[,3] + df[,4] +df[, 5] == 100),]
+df[which(df[,1] + df[,2] + df[,3] + df[,4] +df[, 5] == 100), 6] <- 0
+
+DF[!complete.cases(DF),] <- df
+SD[,70:75] <- DF
 
 # adding one column with explanation for race column (matching index with race names)
 race_idx <- unique(SD$race)
