@@ -1,9 +1,11 @@
 ---
 title: "SD_dataset"
 author: "Katarzyna Otko"
-date: "4 września 2020"
-output: html_document
-editor_options: 
+date: "4 wrzeĹ›nia 2020"
+output:
+  pdf_document: default
+  html_document: default
+editor_options:
   chunk_output_type: console
 ---
  Some text
