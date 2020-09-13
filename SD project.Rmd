@@ -1,14 +1,28 @@
 ---
 title: "SD_dataset"
-author: "Katarzyna Otko"
-date: "4 wrzeĹ›nia 2020"
+author: |
+    | Katarzyna Otko s202872
+    | Alvils Sture s202586
+date: "October 2020"
 output:
   pdf_document: default
   html_document: default
 editor_options:
   chunk_output_type: console
 ---
- Some text
+
+## 1. A description of the dataset.
+
+The dataset of our choice is a result of a **Speed Dating Experiment** that was conducted in years 2002 - 2004 by professors of Colombia University  for their paper entitled *Gender Differences in Mate   Selection: Evidence From a Speed Dating Experiment*. The goal of this two-year experiment was to discover what features and factors play the most important role during first minutes of a date. Overall, there were 21 speed dating events (waves), with participants ranging from 12 to 44 in each, which in overall sums up to 551 people. Those subjects were drawn from students in graduate and professional schools at Columbia University. Each date lasted 4 minutes.
+
+The dataset also includes questionnaire data gathered from participants at different stages of the process. Attendees answered questions about their dating habits, self-perception, beliefs on what others may find attractive in a mate, lifestyle, demographics and many more. The process consisted of 4 steps:
+
+* Signup (Time 1) - filling out a survey in order to register for the event;
+* Answering questions half way through meeting all potential dates during the night of the event;
+* 1st Followup (Time 2) - filling out a survey the day after participating in the event;
+* 2nd Followup (Time 3) - filling out a survey 3-4 weeks after participants had been sent their matches.
+
+
 ```{r, message=F, warning=F}
 library(dplyr)
 library(ggplot2)
