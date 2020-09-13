@@ -16,7 +16,6 @@ library(reshape2)
 setwd('C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/Project I')
 SD <- read.csv('Speed Dating Data.csv')
 
-
 # numdim(SDber of rows and columns
 dim(SD)
 
