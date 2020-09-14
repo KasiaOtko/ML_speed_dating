@@ -11,9 +11,15 @@ editor_options:
   chunk_output_type: console
 ---
 
-## 1. A description of the dataset.
+## 1. A description of the dataset
 
-The dataset of our choice is a result of a **Speed Dating Experiment** that was conducted in years 2002 - 2004 by professors of Colombia University  for their paper entitled *Gender Differences in Mate   Selection: Evidence From a Speed Dating Experiment*. The goal of this two-year experiment was to discover what features and factors play the most important role during first minutes of a date. Overall, there were 21 speed dating events (waves), with participants ranging from 12 to 44 in each, which in overall sums up to 551 people. Those subjects were drawn from students in graduate and professional schools at Columbia University. Each date lasted 4 minutes.
+### 1.1. What is our data about?
+
+The dataset of our choice is a result of a **Speed Dating Experiment** that was conducted in years 2002 - 2004 by professors of Colombia University for their paper entitled *Gender Differences in Mate Selection: Evidence From a Speed Dating Experiment*. The goal of this two-year experiment was to discover what features and factors play the most important role during first minutes of a date. In others words, what makes us want to see the other person again?
+
+Source of the dataset: https://data.world/annavmontoya/speed-dating-experiment
+
+Overall, there were 21 speed dating events (waves), with participants ranging from 12 to 44 in each, which in overall sums up to 551 people. Those subjects were drawn from students in graduate and professional schools at Columbia University. Each date lasted 4 minutes.
 
 The dataset also includes questionnaire data gathered from participants at different stages of the process. Attendees answered questions about their dating habits, self-perception, beliefs on what others may find attractive in a mate, lifestyle, demographics and many more. The process consisted of 4 steps:
 
@@ -22,11 +28,19 @@ The dataset also includes questionnaire data gathered from participants at diffe
 * 1st Followup (Time 2) - filling out a survey the day after participating in the event;
 * 2nd Followup (Time 3) - filling out a survey 3-4 weeks after participants had been sent their matches.
 
+### 1.2. Summary of previous analysis of the dataset
+
+We would like to briefly summarize the previously mentioned paper *Gender Differences in Mate Selection: Evidence From a Speed Dating Experiment* written by Raymond Fisman, Sheena S. Iyengar, Emir Kamenica and Itamar Simonson.
+
+
+
 
 ```{r, message=F, warning=F}
 library(dplyr)
 library(ggplot2)
 library(reshape2)
+library(knitr)
+library(tidyr)
 setwd('C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/Project I')
 SD <- read.csv('Speed Dating Data.csv')
 
@@ -43,7 +57,7 @@ length(unique(SD$iid[which(SD$gender == 1)])) # 277
 ```
 
 
-## Missin values
+## Missing values
 ```{r}
 NAs <- sapply(SD, function(x) sum(is.na(x)))
 sort(NAs[which(NAs > 0)]) 
@@ -56,11 +70,8 @@ SD[which(is.na(SD$pid)), 1:15] # partner's id - 7
 SD[which(SD$id == 7 & SD$wave == 5), 1:2] # we have to fill these 10 NAs with 128
 SD[which(is.na(SD$pid)), 'pid'] <- 128
 
-s = 0
 
-NAs <- sapply(df, function(x) sum(is.na(x))); NAs
-NAs_sum <- sum(NAs); NAs_sum
-
+# filling missing values in columns <attribute_name>1_1
 DF <- SD[, 70:75]
 df <- DF[!complete.cases(DF),]
 dim(df); sum(rowSums(df, na.rm = T) == 100) # so there are 42 rows where we can impute 0s
@@ -75,6 +86,12 @@ df[which(df[,1] + df[,2] + df[,3] + df[,4] +df[, 5] == 100), 6] <- 0
 
 DF[!complete.cases(DF),] <- df
 SD[,70:75] <- DF
+
+df <- subset(SD, !duplicated(SD$iid))
+df[,1]
+67/nrow(df)
+NAs <- sapply(df, function(x) sum(is.na(x))); NAs
+NAs_sum <- sum(NAs); NAs_sum
 
 # adding one column with explanation for race column (matching index with race names)
 race_idx <- unique(SD$race)
@@ -104,6 +121,33 @@ summary(SD[SD$wave >= 6 & SD$wave <= 9,129:134])
 # attr2_1 - shar2_1 OK
 # attr1_2 - shar1_2 OK
 
+```
+
+```{r}
+# Importance of each attribute by gender
+attr <- subset(SD, !duplicated(SD$iid), select = c(3, 70:75)) %>%
+  filter(!is.na(attr1_1))  %>% # 7 people with missing values
+  group_by(gender) %>%
+  summarize(Attractiveness = mean(attr1_1),
+            Sincerity = mean(sinc1_1),
+            Intelligence = mean(intel1_1),
+            Fun = mean(fun1_1, na.rm = T),
+            Ambition = mean(amb1_1, na.rm = T),
+            'Shared interests' = mean(shar1_1, na.rm = T))
+
+data_long <- pivot_longer(attr, !gender) # manipulating data to  plot
+
+data_long %>% ggplot(aes(x = name, y = value, fill = factor(gender))) + 
+  geom_bar(stat = 'identity', position = 'dodge') +
+  xlab('Attribute') + ylab('Importance') + ggtitle('Importance of each attribute by gender') +
+  geom_text(aes(label = round(value, 2)), position=position_dodge(width=0.9), vjust = -0.5, size = 3.2) +
+  scale_fill_discrete(name="Gender",
+                         breaks=c(0, 1),
+                         labels=c("Women", "Men")) + # Editing legend
+  theme_minimal() + # Changing theme
+  theme(plot.title = element_text(hjust = 0.5),
+        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0), size = 12),
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0), size = 12)) # Centers title
 ```
 
 ```{r}
