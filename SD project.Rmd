@@ -17,7 +17,7 @@ editor_options:
 
 The dataset of our choice is a result of a **Speed Dating Experiment** that was conducted in years 2002 - 2004 by professors of Colombia University for their paper entitled *Gender Differences in Mate Selection: Evidence From a Speed Dating Experiment*. The goal of this two-year experiment was to discover what features and factors play the most important role during first minutes of a date. In others words, what makes us want to see the other person again?
 
-Source of the dataset: https://data.world/annavmontoya/speed-dating-experiment
+Source of the dataset: https://data.world/annavmontoya/speed-dating-experiment.
 
 Overall, there were 21 speed dating events (waves), with participants ranging from 12 to 44 in each, which in overall sums up to 551 people. Those subjects were drawn from students in graduate and professional schools at Columbia University. Each date lasted 4 minutes.
 
@@ -41,6 +41,8 @@ library(ggplot2)
 library(reshape2)
 library(knitr)
 library(tidyr)
+library(mltools)
+library(data.table)
 setwd('C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/Project I')
 SD <- read.csv('Speed Dating Data.csv')
 
@@ -145,9 +147,12 @@ data_long %>% ggplot(aes(x = name, y = value, fill = factor(gender))) +
                          breaks=c(0, 1),
                          labels=c("Women", "Men")) + # Editing legend
   theme_minimal() + # Changing theme
-  theme(plot.title = element_text(hjust = 0.5),
-        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0), size = 12),
-        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0), size = 12)) # Centers title
+  theme(plot.title = element_text(hjust = 0.5), # Centers title
+        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0), size = 12), # x/y labels position
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0), size = 12)) 
+
+unique(SD$race)
+
 ```
 
 ```{r}
@@ -230,16 +235,52 @@ goal_df %>% ggplot(aes(x = goal_explained, y = count, fill = gender)) +
 ```
 
 ```{r}
-# Importance of features for men/women
 
+SD[(SD$dec == 1), c('iid', 'id', 'gender', 'wave','dec', 'match', 'partner', 'pid')]
+SD[SD$iid == 11 & SD$partner == 1, c('iid', 'id', 'gender', 'wave','dec', 'match', 'partner', 'pid')]
+
+
+df <- SD[SD$wave == 1,]
+unique(df$id)
+length(unique(SD$iid[which(SD$gender == 0)]))
+df
 ```
 
 ## PCA
 
 ```{r}
 colnames(SD)[51:67]
-Y <- subset(SD, !duplicated(SD$iid), select = c(51, 56:60, 63, 65, 66))
+which(colnames(SD) == 'intel2_1')
+data.table()
+
+race_idx <- unique(SD$race)
+race_val <- c('Asian', 'European', 'Other', 'Latino', 'Black', NA)
+SD$race_explained <- race_val[match(SD$race, race_idx)]
+
+Y <- subset(SD, !duplicated(SD$iid), select = c(3, 196, 34, 41, 42, 70:72, 88, 91, 92, 82:84))
+
+asian <- ifelse(Y$race_explained == 'Asian', 1, 0)
+european <- ifelse(Y$race_explained == 'European', 1, 0)
+other <- ifelse(Y$race_explained == 'Other', 1, 0)
+latino <- ifelse(Y$race_explained == 'Latino', 1, 0)
+black <- ifelse(Y$race_explained == 'Black', 1, 0)
+
+Y <- cbind(Y, asian, european, other, latino, black)
+
+Y <- Y[,(-2)]
+summary(Y)
 Y <- t(apply(Y, 1, '-', colMeans(Y, na.rm = T)))
+
+for (i in 1:ncol(Y)) {
+  sds[i] <- sd(Y[,i], na.rm = T)
+}
+names(sds) <- colnames(Y)
+for (i in 2:13) {
+  Y[,i] <- Y[,i]/sds[i]
+}
+
+summary(Y)
+colMeans(Y, na.rm = T)
 
 s <- svd(Y[complete.cases(Y),])
 diagS <- s$d
@@ -264,4 +305,9 @@ legend("right", # Define position
        legend=c("Cumulative", "Individual", "Threshold"), # Set strings for legend
        col=c("orange", "blue", "black"), lty=c(1,1,2), # Match appereance of lines
        cex=1.5, bg='lightblue') # Setup how the box looks (cex controls size)
+
+rownames(s$v) <- colnames(Y)
+
+
+
 ```
