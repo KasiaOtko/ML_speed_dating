@@ -42,6 +42,7 @@ library(reshape2)
 library(knitr)
 library(tidyr)
 setwd('C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/Project I')
+setwd("/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating")
 SD <- read.csv('Speed Dating Data.csv')
 
 # numdim(SDber of rows and columns
@@ -265,3 +266,36 @@ legend("right", # Define position
        col=c("orange", "blue", "black"), lty=c(1,1,2), # Match appereance of lines
        cex=1.5, bg='lightblue') # Setup how the box looks (cex controls size)
 ```
+## Scree plot
+
+eigenv = diagS^2
+xlimits <- c(1, ncol(Y)); 
+plot(eigenv,
+     type='o',
+     main="Scree plot",
+     xlab="Principal component", 
+     ylab="Eigenvalue",
+     xlim=xlimits,
+     col='blue')
+     
+## removes all nan values
+Y <- subset(SD, !duplicated(SD$iid), select = c(51, 56:60, 63, 65, 66))
+match = subset(SD, !duplicated(SD$iid), select = c(13))
+match = match[complete.cases(Y),]
+
+Y = Y[complete.cases(Y),]
+
+## cos dist
+match_Y = Y[which(match == 1), ]
+centr_match_Uy = matrix((colMeans(match_Y) / sqrt(sum(colMeans(match_Y)^2))))
+
+no_match_Y = Y[which(match == 0), ]
+centr_no_match_Uy = matrix((colMeans(no_match_Y) / sqrt(sum(colMeans(no_match_Y)^2))))
+
+uY = data.matrix(Y/sqrt(rowSums(Y^2, na.rm=T)))
+
+##
+score_no_match = (uY) %*% centr_no_match_Uy
+score_match = (uY) %*% centr_match_Uy
+
+
