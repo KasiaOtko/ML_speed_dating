@@ -42,6 +42,8 @@ library(reshape2)
 library(knitr)
 library(tidyr)
 setwd('C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/Project I')
+setwd('/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating')
+
 SD <- read.csv('Speed Dating Data.csv')
 
 # numdim(SDber of rows and columns
@@ -238,7 +240,8 @@ goal_df %>% ggplot(aes(x = goal_explained, y = count, fill = gender)) +
 
 ```{r}
 colnames(SD)[51:67]
-Y <- subset(SD, !duplicated(SD$iid), select = c(51, 56:60, 63, 65, 66))
+
+Y <- subset(SD, !duplicated(SD$iid), select = c(3, 15, 16, 51, 56:59, 63, 65, 66, 34,140:145, 130:136))
 Y <- t(apply(Y, 1, '-', colMeans(Y, na.rm = T)))
 
 s <- svd(Y[complete.cases(Y),])
@@ -265,3 +268,21 @@ legend("right", # Define position
        col=c("orange", "blue", "black"), lty=c(1,1,2), # Match appereance of lines
        cex=1.5, bg='lightblue') # Setup how the box looks (cex controls size)
 ```
+# chee plot
+
+eigenv = diagS^2
+xlimits <- c(1, ncol(Y)); 
+plot(eigenv,
+     type='o',
+     main="Chee plot",
+     xlab="Principal components", 
+     ylab="Eigenvalue",
+     col='blue')
+     
+## filter
+match = subset(SD, !duplicated(SD$iid), select = c(13))
+Y = Y[complete.cases(Y),]
+match = match[complete.cases(Y),]
+
+     
+     
