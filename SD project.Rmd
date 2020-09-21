@@ -279,10 +279,57 @@ plot(eigenv,
      ylab="Eigenvalue",
      col='blue')
      
-## filter
-match = subset(SD, !duplicated(SD$iid), select = c(13))
-Y = Y[complete.cases(Y),]
-match = match[complete.cases(Y),]
+## cosine dist
+matches = subset(SD, !duplicated(SD$iid), select = c(13))
+Y_new = Y[complete.cases(Y),]
+matches = matches[complete.cases(Y),]
 
-     
-     
+Y_matches = Y_new[matches == 1,]
+Y_no_matches = Y_new[matches == 0, ]
+
+<!-- centr_uY_matches = colMeans(Y_matches) / sqrt(sum(colMeans(Y_matches)^2)) -->
+centr_uY_no_matches = colMeans(Y_no_matches) / sqrt(sum(colMeans(Y_no_matches)^2))
+
+uY = data.matrix(Y_new / sqrt(rowSums(Y_new^2)))
+
+score1 = uY %*% centr_uY_matches
+score2 = uY %*% centr_uY_no_matches
+m = as.vector(1:length(score2[matches == 0]))
+plot(m, score2[matches == 0],col='blue')
+
+m = as.vector(1:length(score2[matches == 1]))
+points(m, score2[matches == 1], col="red", pch="*")
+
+
+m = as.vector(1:length(score1[matches == 0]))
+plot(m, score1[matches == 0],col='blue')
+
+m = as.vector(1:length(score1[matches == 1]))
+points(m, score1[matches ==1], col="red", pch="*")
+
+## euclid dist
+matches = subset(SD, !duplicated(SD$iid), select = c(13))
+Y_new = Y[complete.cases(Y),]
+matches = matches[complete.cases(Y),]
+
+Y_matches = Y_new[matches == 1,]
+Y_no_matches = Y_new[matches == 0, ]
+
+centr_uY_matches = colMeans(Y_matches)
+centr_uY_no_matches = colMeans(Y_no_matches)
+
+uY = data.matrix(Y_new)
+
+score1 = sqrt(rowSums((uY + as.vector(centr_uY_matches))^2))
+score2 = sqrt(rowSums((uY + as.vector(centr_uY_no_matches))^2))
+m = as.vector(1:length(score2[matches == 0]))
+plot(m, score2[matches == 0],col='blue')
+m = as.vector(1:length(score2[matches == 1]))
+points(m, score2[matches == 1], col="red", pch="*")
+
+
+
+m = as.vector(1:length(score1[matches == 0]))
+plot(m, score1[matches == 0],col='blue')
+m = as.vector(1:length(score1[matches == 1]))
+points(m, score1[matches == 1], col="red", pch="*")
