@@ -42,7 +42,12 @@ library(reshape2)
 library(knitr)
 library(tidyr)
 setwd('C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/Project I')
+<<<<<<< HEAD
 setwd("/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating")
+=======
+setwd('/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating')
+
+>>>>>>> dev-alvils
 SD <- read.csv('Speed Dating Data.csv')
 
 # numdim(SDber of rows and columns
@@ -239,7 +244,12 @@ goal_df %>% ggplot(aes(x = goal_explained, y = count, fill = gender)) +
 
 ```{r}
 colnames(SD)[51:67]
+<<<<<<< HEAD
 Y <- subset(SD, !duplicated(SD$iid), select = c(51, 56:60, 63, 65, 66))
+=======
+
+Y <- subset(SD, !duplicated(SD$iid), select = c(3, 15, 16, 51, 56:59, 63, 65, 66, 34,140:145, 130:136))
+>>>>>>> dev-alvils
 Y <- t(apply(Y, 1, '-', colMeans(Y, na.rm = T)))
 
 s <- svd(Y[complete.cases(Y),])
@@ -266,12 +276,17 @@ legend("right", # Define position
        col=c("orange", "blue", "black"), lty=c(1,1,2), # Match appereance of lines
        cex=1.5, bg='lightblue') # Setup how the box looks (cex controls size)
 ```
+<<<<<<< HEAD
 ## Scree plot
+=======
+# chee plot
+>>>>>>> dev-alvils
 
 eigenv = diagS^2
 xlimits <- c(1, ncol(Y)); 
 plot(eigenv,
      type='o',
+<<<<<<< HEAD
      main="Scree plot",
      xlab="Principal component", 
      ylab="Eigenvalue",
@@ -299,3 +314,64 @@ score_no_match = (uY) %*% centr_no_match_Uy
 score_match = (uY) %*% centr_match_Uy
 
 
+=======
+     main="Chee plot",
+     xlab="Principal components", 
+     ylab="Eigenvalue",
+     col='blue')
+     
+## cosine dist
+matches = subset(SD, !duplicated(SD$iid), select = c(13))
+Y_new = Y[complete.cases(Y),]
+matches = matches[complete.cases(Y),]
+
+Y_matches = Y_new[matches == 1,]
+Y_no_matches = Y_new[matches == 0, ]
+
+<!-- centr_uY_matches = colMeans(Y_matches) / sqrt(sum(colMeans(Y_matches)^2)) -->
+centr_uY_no_matches = colMeans(Y_no_matches) / sqrt(sum(colMeans(Y_no_matches)^2))
+
+uY = data.matrix(Y_new / sqrt(rowSums(Y_new^2)))
+
+score1 = uY %*% centr_uY_matches
+score2 = uY %*% centr_uY_no_matches
+m = as.vector(1:length(score2[matches == 0]))
+plot(m, score2[matches == 0],col='blue')
+
+m = as.vector(1:length(score2[matches == 1]))
+points(m, score2[matches == 1], col="red", pch="*")
+
+
+m = as.vector(1:length(score1[matches == 0]))
+plot(m, score1[matches == 0],col='blue')
+
+m = as.vector(1:length(score1[matches == 1]))
+points(m, score1[matches ==1], col="red", pch="*")
+
+## euclid dist
+matches = subset(SD, !duplicated(SD$iid), select = c(13))
+Y_new = Y[complete.cases(Y),]
+matches = matches[complete.cases(Y),]
+
+Y_matches = Y_new[matches == 1,]
+Y_no_matches = Y_new[matches == 0, ]
+
+centr_uY_matches = colMeans(Y_matches)
+centr_uY_no_matches = colMeans(Y_no_matches)
+
+uY = data.matrix(Y_new)
+
+score1 = sqrt(rowSums((uY + as.vector(centr_uY_matches))^2))
+score2 = sqrt(rowSums((uY + as.vector(centr_uY_no_matches))^2))
+m = as.vector(1:length(score2[matches == 0]))
+plot(m, score2[matches == 0],col='blue')
+m = as.vector(1:length(score2[matches == 1]))
+points(m, score2[matches == 1], col="red", pch="*")
+
+
+
+m = as.vector(1:length(score1[matches == 0]))
+plot(m, score1[matches == 0],col='blue')
+m = as.vector(1:length(score1[matches == 1]))
+points(m, score1[matches == 1], col="red", pch="*")
+>>>>>>> dev-alvils
