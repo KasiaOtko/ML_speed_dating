@@ -322,7 +322,7 @@ match = subset(SD, !duplicated(SD$iid), select = c(13))
 match = match[complete.cases(Y),]
 
 Y = Y[complete.cases(Y),]
-
+coln
 ## cos dist
 Y_matches = Y[which(match == 1), ]
 Y_no_matches = Y[which(match == 0), ]
