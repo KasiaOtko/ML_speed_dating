@@ -90,7 +90,7 @@ SD$income <- as.numeric(gsub(',', "", SD$income, fixed = T))
 # attr4_1 - shar4_1 have values between 0 and 10
 # attr2_1 - shar2_1 OK
 # attr1_2 - shar1_2 OK
-which(colnames(SD) == 'attr1_1')
+which(colnames(SD) == 'income')
 summary(SD[SD$wave >= 6 & SD$wave <= 9,70:76]) # each feature is between 1-10, while they all should add up to 100
 df <- SD[SD$wave >= 6 & SD$wave <= 9,76:81]
 df_norm <- df
@@ -102,6 +102,109 @@ for(col in 1:ncol(df)) {
 unique(rowSums(df_norm, na.rm = T))
 SD[SD$wave >= 6 & SD$wave <= 9,76:81] <- df_norm
 head(SD[SD$wave >= 6 & SD$wave <= 9,76:81])
+```
+
+
+## Outliers
+```{r}
+df <- subset(SD, !duplicated(SD$iid), select = c(70:75, 34, 45)) %>% scale() %>% as.data.frame()
+
+df_long <- pivot_longer(df[complete.cases(df),], colnames(df))
+attr_idx <- unique(df_long$name)
+#attr_val <- c('Attractiveness', 'Sincerity', 'Intelligence', 'Fun', 'Ambition', 'Shared interests', 'Age', 'Income')
+#df_long$name <- attr_val[match(df_long$name, attr_idx)]
+df_long$name <- factor(df_long$name , levels=attr_idx)
+
+
+df_long %>% ggplot(aes(x = name, y = value, fill = name)) + geom_boxplot(show.legend = F) + 
+  xlab('Feature') + ylab('Value') + ggtitle('Distribution of chosen features after scaling') +
+  theme_minimal() + # Changing theme
+  theme(plot.title = element_text(hjust = 0.5, size = 15), # Centers title
+        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0), size = 15), # x/y labels position
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0), size = 15),
+        axis.text.x = element_text(size = 13),
+        axis.text.y = element_text(size = 13)) 
+
+df_long %>% ggplot(aes(x = value)) + geom_histogram(bins = 20) + facet_wrap(~ name) 
+  theme_minimal() + # Changing theme
+  theme(plot.title = element_text(hjust = 0.5), # Centers title
+        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0), size = 12), # x/y labels position
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0), size = 12)) 
+
+```
+
+## Normality
+```{r}
+df <- subset(SD, !duplicated(SD$iid), select = c(70:75, 34, 45)) 
+#%>% scale() %>% as.data.frame()
+df_long <- pivot_longer(df[complete.cases(df),], colnames(df))
+attr_idx <- unique(df_long$name)
+df_long$name <- factor(df_long$name , levels=attr_idx)
+par(mfrow=c(2, 4))
+for (i in 1:ncol(df)) {
+  qqnorm(df[,i])
+  qqline(df[,i])
+}
+
+plot(density(df[,1], na.rm = T))
+
+df_long %>% ggplot(aes(value)) + geom_histogram(bins = 20) +
+  facet_wrap(~name, ncol = 4, scales = 'free')
+
+for (i in 1:ncol(df)) {
+  h <- hist(log(df[,i]))
+  ec <- ecdf(log(df[,i]))
+  #axis(4, at = seq(from = 0, to = 30, length.out = 11), labels=seq(0, 1, 0.1), col = 'red', col.axis = 'red')
+  #plot(x = h$mids, y=ec(h$mids)*max(h$counts), col = rgb(0,0,0,alpha=0), axes=F, xlab=NA, ylab=NA)
+  lines(x = h$mids, y = ec(h$mids)*max(h$counts), col ='red')
+  axis(4, at=seq(from = 0, to = max(h$counts), length.out = 11), labels=seq(0, 1, 0.1), col = 'red', col.axis = 'red')
+  #(side = 4, line = 3, 'Cumulative Density', col = 'red')
+}
+plot(ecdf(df[,1]))
+
+plot(0:100, type="n", axes=FALSE, ann=FALSE)
+title(quote("axis(1, .., gap.axis = f)," ~~ f >= 0))
+axis(4, at=seq(from = 0, to = 30, length.out = 11), labels=seq(0, 1, 0.1), col = 'red', col.axis = 'red')
+
+library(tseries)
+pvalues <- c()
+for(i in 1:ncol(df)) {
+  pvalues[i] <- shapiro.test(df[complete.cases(df),i])$p.value
+}
+
+```
+
+## Correlation
+```{r}
+cor <- as.matrix(cor(df, use = 'complete.obs'))
+#rownames(cor) <- attr_val
+#colnames(cor) <- attr_val
+
+lower_tri <- cor
+lower_tri[upper.tri(cor)] <- NA
+melted_cor <- melt(lower_tri, na.rm = T)
+attr_idx <- unique(df_long$name)
+attr_val <- c('Attractiveness', 'Sincerity', 'Intelligence', 'Fun', 'Ambition', 'Shared interests')
+
+melted_cor %>% ggplot(aes(x = Var1, y = Var2, fill = value)) + geom_tile() +
+  scale_fill_gradient2(limits = c(-1, 1), space = 'Lab', name="Pearson\nCorrelation", low = 'royalblue3', high = 'indianred1') +
+  coord_fixed() +
+  geom_text(aes(Var1, Var2, label = round(value, 2)), color = "black", size = 5) +
+  theme_minimal() +
+    theme(
+  axis.title.x = element_blank(), 
+  axis.title.y = element_blank(),
+  axis.text.x = element_text(size = 12),
+  axis.text.y = element_text(size = 12),
+  #panel.grid.major = element_blank(),
+  panel.border = element_blank(),
+  panel.background = element_blank(),
+  legend.title = element_text(size = 15),
+  legend.justification = c(1, 0),
+  legend.position = c(0.4, 0.7),
+  legend.direction = "horizontal") +
+  guides(fill = guide_colorbar(barwidth = 7, barheight = 1,
+                title.position = "top", title.hjust = 0.5))
 ```
 
 ```{r}
@@ -134,16 +237,10 @@ data_long %>% ggplot(aes(x = name, y = value, fill = factor(gender))) +
 
 ```{r}
 # Age analysis
-sum(is.na(SD$age))
-SD[is.na(SD$age), 1:10]
-
 age_df <- subset(SD, !duplicated(SD[,1])) %>%
   filter(!is.na(age)) %>%
   group_by(wave, gender) %>%
   summarize(Average_age = mean(age))
-
-SD %>% nrow()
-nrow(SD)
 
 age_df$gender <- ifelse(age_df$gender == 0, 'Women', 'Men')
 
@@ -188,9 +285,14 @@ race_df <- subset(SD, !duplicated(SD$iid)) %>%
   summarize(race_sum = n())
 race_df <- rbind(race_df, c('Native American', 0))
 
-race_plot <- race_df %>% ggplot(aes(x = race_explained, y = race_sum)) + 
+race_df %>% ggplot(aes(x = race_explained, y = as.numeric(race_sum))) + 
   geom_bar(stat = 'identity', position = 'dodge') +
-  scale_x_discrete()
+  xlab('Count') + ylab('Race') + ggtitle('Overview of participants\' race') +
+  theme_minimal() + # Changing theme
+  theme(plot.title = element_text(hjust = 0.5), # Centers title
+        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0), size = 12), # x/y labels position
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0), size = 12)) +
+  coord_flip()
 race_plot
 
 ```
