@@ -144,10 +144,10 @@ for(row in 1:nrow(SD)) {
 }
   
 # to remove
-cols = c("iid", "id", "idg", "condtn", "wave", "round", "position",  "order", "partner", "pid", "field", "field_cd",  "race", "from", "zipcode", "career", "career_c", "dec", "match_es", "satis_2", "length", "numdat_2", 'race', 'race_o', 'field_cd', 'field', 'int_corr', "dec_o", "race_explained","race_explained_o", "field_explained", "met", "met_o")
+#cols = c("iid", "id", "idg", "condtn", "wave", "round", "position",  "order", "partner", "pid", "field", "field_cd",  "race", "from", "zipcode", "career", "career_c", "dec", "match_es", "satis_2", "length", "numdat_2", 'race', 'race_o', 'field_cd', 'field', 'int_corr', "dec_o", "race_explained","race_explained_o", "field_explained", "met", "met_o")
 
-SD = SD[ , -which(names(SD) %in% cols)]
-SD = SD[complete.cases(SD), ]
+#SD = SD[ , -which(names(SD) %in% cols)]
+#SD = SD[complete.cases(SD), ]
 
 ```
 
@@ -267,6 +267,8 @@ goal_df %>% ggplot(aes(x = goal_explained, y = count, fill = gender)) +
 ```{r}
 colnames(SD)[51:67]
 
+colnames(SD)[c(3, 15, 16, 51, 56:59, 63, 65, 66, 34,140:145, 130:136)]
+
 Y <- subset(SD, !duplicated(SD$iid), select = c(51, 56:60, 63, 65, 66))
 Y <- subset(SD, !duplicated(SD$iid), select = c(3, 15, 16, 51, 56:59, 63, 65, 66, 34,140:145, 130:136))
 Y <- t(apply(Y, 1, '-', colMeans(Y, na.rm = T)))
@@ -307,5 +309,61 @@ plot(eigenv,
      ylab="Eigenvalue",
      xlim=xlimits,
      col='blue')
+```
+
+## PCA 2 - 29.09
+```{r}
+cols <- c('gender', 'age', 'age_o', 'race_explained', 'race_explained_o', 'pf_o_att', 'pf_o_sin', 'pf_o_int', 'pf_o_fun', 'pf_o_amb', 'pf_o_sha', 'attr1_1', 'sinc1_1', 'intel1_1', 'amb1_1', 'shar1_1', 'attr', 'sinc', 'intel', 'amb', 'shar', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like', 'like_o', 'prob', 'prob_o')
+Y <- subset(SD, !duplicated(SD$iid), select = cols)
+
+asian <- ifelse(Y$race_explained == 'Asian', 1, 0)
+european <- ifelse(Y$race_explained == 'European', 1, 0)
+other <- ifelse(Y$race_explained == 'Other', 1, 0)
+latino <- ifelse(Y$race_explained == 'Latino', 1, 0)
+black <- ifelse(Y$race_explained == 'Black', 1, 0)
+
+asian_o <- ifelse(Y$race_explained_o == 'Asian', 1, 0)
+european_o <- ifelse(Y$race_explained_o == 'European', 1, 0)
+other_o <- ifelse(Y$race_explained_o == 'Other', 1, 0)
+latino_o <- ifelse(Y$race_explained_o == 'Latino', 1, 0)
+black_o <- ifelse(Y$race_explained_o == 'Black', 1, 0)
+
+Y <- cbind(Y, asian, european, other, latino, black, asian_o, european_o, other_o, latino_o, black_o)
+
+cols_cat <- c('asian', 'european', 'other', 'latino', 'black', 'asian_o', 'european_o', 'other_o', 'latino_o', 'black_o')
+
+Y[, cols_cat] <- Y[, cols_cat]/sqrt(5)
+
+colnames(Y)
+Y <- Y[, -c(4, 5)] #deleting categorical variables race and race_o
+
+Y_temp <- Y[, -which(colnames(Y) %in% c(cols_cat, 'gender'))]
+
+Y_temp <- t(apply(Y_temp, 1, '-', colMeans(Y_temp, na.rm = T))) # subtracting mean
+
+Y_temp <- t(apply(Y_temp, 1, '/', apply(Y_temp, 2, sd, na.rm = T))) # dividing by standard deviation
+colnames(Y)
+Y <- cbind(Y_temp, Y[, c(cols_cat, 'gender')])
+
+Y <- t(apply(Y, 1, '-', colMeans(Y, na.rm = T)))
+
+s <- svd(Y[complete.cases(Y),])
+diagS <- s$d
+rho <- diagS^2/sum(diagS^2)
+
+threshold = 0.9
+
+
+xlimits <- c(1, ncol(Y)); 
+plot(rho,
+     type='o',
+     main="Variance explained by principal components",
+     xlab="Principal components", 
+     ylab="Variance explained",
+     xlim=xlimits,
+     ylim=c(0,1),
+     col='blue')
+lines(cumsum(rho), type='o', col='orange')
+lines(xlimits, c(threshold, threshold), lty='dashed')
      
 
