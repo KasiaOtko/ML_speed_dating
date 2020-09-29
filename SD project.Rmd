@@ -366,6 +366,7 @@ Y <- Y[,(-2)]
 summary(Y)
 Y <- t(apply(Y, 1, '-', colMeans(Y, na.rm = T)))
 
+sds <- c()
 for (i in 1:ncol(Y)) {
   sds[i] <- sd(Y[,i], na.rm = T)
 }
