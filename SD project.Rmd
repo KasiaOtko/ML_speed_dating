@@ -1,3 +1,8 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
 
 
 ```{r, message=F, warning=F}
@@ -181,7 +186,7 @@ df_long %>% ggplot(aes(x = name, y = value, fill = name)) + geom_boxplot(show.le
         axis.text.x = element_text(size = 13),
         axis.text.y = element_text(size = 13)) 
 
-df_long %>% ggplot(aes(x = value)) + geom_histogram(bins = 20) + facet_wrap(~ name) 
+df_long %>% ggplot(aes(x = value)) + geom_histogram(bins = 20) + facet_wrap(~ name) +
   theme_minimal() + # Changing theme
   theme(plot.title = element_text(hjust = 0.5), # Centers title
         axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0), size = 12), # x/y labels position
@@ -190,25 +195,17 @@ df_long %>% ggplot(aes(x = value)) + geom_histogram(bins = 20) + facet_wrap(~ na
 
 ## Normality
 ```{r}
-df <- subset(SD, !duplicated(SD$iid), select = c(70:75, 34, 45)) 
-#%>% scale() %>% as.data.frame()
+df <- subset(SD, !duplicated(SD$iid), select = c(70:75, 34, 45)) %>% scale() %>% as.data.frame()#34, 45 - age, income
+#
 df_long <- pivot_longer(df[complete.cases(df),], colnames(df))
 attr_idx <- unique(df_long$name)
 df_long$name <- factor(df_long$name , levels=attr_idx)
+
 par(mfrow=c(2, 4))
 for (i in 1:ncol(df)) {
-  qqnorm(df[,i])
-  qqline(df[,i])
-}
-
-plot(density(df[,1], na.rm = T))
-
-df_long %>% ggplot(aes(value)) + geom_histogram(bins = 20) +
-  facet_wrap(~name, ncol = 4, scales = 'free')
-
-for (i in 1:ncol(df)) {
-  h <- hist(log(df[,i]))
-  ec <- ecdf(log(df[,i]))
+  h <- hist(df[,i], main = paste("Histogram of", colnames(df)[i]), xlab = "Value", ylab = "")
+  mtext(text = "Frequency", side = 2, line = 2.2, cex = 0.7)
+  ec <- ecdf(df[,i])
   #axis(4, at = seq(from = 0, to = 30, length.out = 11), labels=seq(0, 1, 0.1), col = 'red', col.axis = 'red')
   #plot(x = h$mids, y=ec(h$mids)*max(h$counts), col = rgb(0,0,0,alpha=0), axes=F, xlab=NA, ylab=NA)
   lines(x = h$mids, y = ec(h$mids)*max(h$counts), col ='red')
@@ -216,10 +213,6 @@ for (i in 1:ncol(df)) {
   #(side = 4, line = 3, 'Cumulative Density', col = 'red')
 }
 plot(ecdf(df[,1]))
-
-plot(0:100, type="n", axes=FALSE, ann=FALSE)
-title(quote("axis(1, .., gap.axis = f)," ~~ f >= 0))
-axis(4, at=seq(from = 0, to = 30, length.out = 11), labels=seq(0, 1, 0.1), col = 'red', col.axis = 'red')
 
 library(tseries)
 pvalues <- c()
@@ -250,8 +243,8 @@ melted_cor %>% ggplot(aes(x = Var1, y = Var2, fill = value)) + geom_tile() +
     theme(
   axis.title.x = element_blank(), 
   axis.title.y = element_blank(),
-  axis.text.x = element_text(size = 12),
-  axis.text.y = element_text(size = 12),
+  axis.text.x = element_text(size = 11),
+  axis.text.y = element_text(size = 11),
   #panel.grid.major = element_blank(),
   panel.border = element_blank(),
   panel.background = element_blank(),
