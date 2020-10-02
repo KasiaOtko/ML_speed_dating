@@ -427,6 +427,7 @@ plot(eigenv,
 ```{r}
 cols <- c('gender', 'age', 'age_o', 'race_explained', 'race_explained_o', 'pf_o_att', 'pf_o_sin', 'pf_o_int', 'pf_o_fun', 'pf_o_amb', 'pf_o_sha', 'attr1_1', 'sinc1_1', 'intel1_1', 'amb1_1', 'shar1_1', 'attr', 'sinc', 'intel', 'amb', 'shar', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like', 'like_o', 'prob', 'prob_o')
 Y <- subset(SD, !duplicated(SD$iid), select = cols)
+match <- subset(SD, !duplicated(SD$iid), select = c("match"))
 
 asian <- ifelse(Y$race_explained == 'Asian', 1, 0)
 european <- ifelse(Y$race_explained == 'European', 1, 0)
@@ -441,13 +442,17 @@ latino_o <- ifelse(Y$race_explained_o == 'Latino', 1, 0)
 black_o <- ifelse(Y$race_explained_o == 'Black', 1, 0)
 
 Y <- cbind(Y, asian, european, other, latino, black, asian_o, european_o, other_o, latino_o, black_o)
+match = match[complete.cases(Y), ]
 
+Y <- Y[complete.cases(Y), ]
 cols_cat <- c('asian', 'european', 'other', 'latino', 'black', 'asian_o', 'european_o', 'other_o', 'latino_o', 'black_o')
 
 Y[, cols_cat] <- Y[, cols_cat]/sqrt(5)
 
 colnames(Y)
 Y <- Y[, -c(4, 5)] #deleting categorical variables race and race_o
+Y <- Y[complete.cases(Y), ]
+match = match[complete.cases(Y), ]
 
 Y_temp <- Y[, -which(colnames(Y) %in% c(cols_cat, 'gender'))]
 
@@ -459,6 +464,11 @@ Y <- cbind(Y_temp, Y[, c(cols_cat, 'gender')])
 
 Y <- t(apply(Y, 1, '-', colMeans(Y, na.rm = T)))
 
+Y <- Y[complete.cases(Y), ]
+match = match[complete.cases(Y), ]
+Y[1, "black_o"] = 1 / 5
+
+Y = Y - colMeans(Y)
 s <- svd(Y[complete.cases(Y),])
 diagS <- s$d
 rho <- diagS^2/sum(diagS^2)
@@ -470,7 +480,7 @@ xlimits <- c(1, ncol(Y));
 plot(rho,
      type='o',
      main="Variance explained by principal components",
-     xlab="Principal components", 
+     xlab="Principal component", 
      ylab="Variance explained",
      xlim=xlimits,
      ylim=c(0,1),
@@ -478,4 +488,90 @@ plot(rho,
 lines(cumsum(rho), type='o', col='orange')
 lines(xlimits, c(threshold, threshold), lty='dashed')
      
+
+# scree plot
+par(mfrow=c(1, 1))
+eigenv = diagS^2
+xlimits <- c(1, ncol(Y)); 
+plot(eigenv,
+     type='o',
+     main="Scree plot",
+     xlab="Principal component", 
+     ylab="Eigenvalue",
+     xlim=xlimits,
+     col='blue')
+
+##
+no_match_idx = which(match == 0)
+matc_idx = which(match == 1)
+tmp_match = match
+
+tmp_match[matc_idx] = "match"
+tmp_match[no_match_idx] = "no_match"
+
+tmp = as.data.frame(s$u)
+tmp$match = tmp_match
+no_match_idx = which(match == 0)[1:82]
+matc_idx = which(match == 1)[1:82]
+a = tmp[c(matc_idx, no_match_idx), ]
+
+library(plotly)
+
+
+fig <- plot_ly(a, x = ~V1, y = ~V2, z = ~V3, color = ~match, colors = c('#BF382A', '#0C4B8E'), size = I(100)) 
+%>% add_markers() %>% layout(scene = list(xaxis = list(title = 'PC1'),
+                     yaxis = list(title = 'PC2'),
+                     zaxis = list(title = 'PC3')))
+  
+
+fig
+
+fig <- plot_ly(a, x = ~V1, y = ~V2, z = ~V3, color = ~match, colors = c('#BF382A', '#0C4B8E'), size = I(50)) 
+fig <- fig %>% add_markers()
+fig <- fig %>% layout(title = 'PCA-3D',
+                      scene = list(xaxis = list(title = 'PC1'),
+                     yaxis = list(title = 'PC2'),
+                     zaxis = list(title = 'PC3')))
+
+fig
+##
+eigenv = as.data.frame(s$v)
+colnames(eigenv)  = colnames(Y)
+
+
+install.packages(c("FactoMineR", "factoextra"))
+library("FactoMineR")
+library("factoextra")
+
+
+
+res.pca <- prcomp(Y)
+p <- fviz_pca_var(res.pca)
+print(p)
+
+
+
+install.packages("tidyverse")
+library("ggplo2")
+set.seed(45)
+corr_matrix = cor(Y)
+corr_matrix
+
+tmp = corr_matrix %*% eigen(corr_matrix)$vectors
+tmp = t(tmp)[1:4, ]
+
+
+pc = rep(paste0("PC", 1:4), each=38)
+vals = c()
+index = c()
+for(row in 1:nrow(tmp)) {
+  vals = c(vals, tmp[row, ])
+  index = c(index, 1:38)
+}
+
+df <- data.frame(x=index, val=vals, 
+                   variable=pc)
+# plot
+ggplot(data = df, aes(x=index, y=vals)) + geom_line(aes(colour=pc)) + xlab("Principal component") + ylab("Correlation") + scale_y_continuous(limits = c(-1, 1))
+
 
