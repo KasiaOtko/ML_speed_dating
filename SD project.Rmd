@@ -182,6 +182,11 @@ df_long %>% ggplot(aes(x = value)) + geom_histogram(bins = 20) + facet_wrap(~ na
 ## Normality
 ```{r}
 df <- subset(SD, !duplicated(SD$iid), select = c('attr1_1', 'sinc1_1', 'intel1_1', 'fun1_1', 'amb1_1', 'shar1_1', 'age', 'income')) %>% scale() %>% as.data.frame()
+
+library('moments')
+kurtosis(df, na.rm = T)
+skewness(df, na.rm = T)
+
 df_long <- pivot_longer(df[complete.cases(df),], colnames(df))
 attr_idx <- unique(df_long$name)
 df_long$name <- factor(df_long$name , levels=attr_idx)
