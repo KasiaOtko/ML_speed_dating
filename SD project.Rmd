@@ -1091,23 +1091,7 @@ install.packages(c("FactoMineR", "factoextra"))
 library("FactoMineR")
 library("factoextra")
 res.pca <- prcomp(Y)
-p <- fviz_pca_var(res.pca)
+p <- re(res.pca)
 print(p)
 install.packages("tidyverse")
-library("ggplo2")
-set.seed(45)
-corr_matrix = cor(Y)
-corr_matrix
-tmp = corr_matrix %*% eigen(corr_matrix)$vectors
-tmp = t(tmp)[1:4, ]
-pc = rep(paste0("PC", 1:4), each=38)
-vals = c()
-index = c()
-for(row in 1:nrow(tmp)) {
-  vals = c(vals, tmp[row, ])
-  index = c(index, 1:38)
-}
-df <- data.frame(x=index, val=vals, 
-                   variable=pc)
-# plot
-ggplot(data = df, aes(x=index, y=vals)) + geom_line(aes(colour=pc)) + xlab("Principal component") + ylab("Correlation") + scale_y_continuous(limits = c(-1, 1))
+
