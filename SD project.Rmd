@@ -465,7 +465,6 @@ Y <- t(apply(Y, 1, '-', colMeans(Y, na.rm = T)))
 
 Y <- Y[complete.cases(Y), ]
 match = match[complete.cases(Y), ]
-Y[1, "black_o"] = 1 / 5
 
 Y = Y - colMeans(Y)
 s <- svd(Y[complete.cases(Y),])
