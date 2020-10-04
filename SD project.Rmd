@@ -6,11 +6,10 @@ library(devtools)
 library(dplyr)
 library(ggplot2)
 library(reshape2)
-library(knitr)
 library(tidyr)
-setwd('C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/Project I')
+#setwd('C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/Project I')
 
-setwd("/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating")
+#setwd("/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating")
 
 # mode functions
 Mode <- function(x) {
@@ -20,7 +19,6 @@ Mode <- function(x) {
 
 SD <- read.csv('Speed Dating Data.csv')
 
-# numdim(SDber of rows and columns
 dim(SD)
 
 # number of women
@@ -46,9 +44,8 @@ SD[which(SD$id == 7 & SD$wave == 5), 1:2] # we have to fill these 10 NAs with 12
 SD[which(is.na(SD$pid)), 'pid'] <- 128
 
 # filling missing values in columns <attribute_name>1_1
-DF <- SD[, 70:75]
+DF <- SD[, c('attr1_1', 'sinc1_1', 'intel1_1', 'fun1_1', 'amb1_1', 'shar1_1')]
 df <- DF[!complete.cases(DF),]
-
 dim(df); sum(rowSums(df, na.rm = T) == 100) # so there are 42 rows where we can impute 0s
 df[which(df[,1] + df[,2] + df[,3] == 100),]
 df[which(df[,1] + df[,2] + df[,3] == 100), c(4:6)] <- 0
@@ -114,9 +111,6 @@ SD$field_explained <- field_val[match(SD$field_cd, field_idx)]
 
 # converting income from string to numeric
 SD$income <- as.numeric(gsub(',', "", SD$income, fixed = T))
-sum(is.na(SD$income))
-unique(SD$field_cd)
-summary(SD[SD$wave >= 6 & SD$wave <= 9,129:134])
 
 ## removes any rows where the nb of NA values are greater than 0.25 (25%)
 SD[SD==""]<-NA
