@@ -1,13 +1,17 @@
+## Authors
+
+Katarzyna Otko - s202872  
+Alvils Sture - s202586
 
 ```{r, message=F, warning=F}
-library(rapport)
-library(rapportools)
+#library(rapport)
+#library(rapportools)
 library(devtools)
 library(dplyr)
 library(ggplot2)
 library(reshape2)
 library(tidyr)
-#setwd('C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/Project I')
+setwd('C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/Project I')
 
 #setwd("/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating")
 
@@ -489,4 +493,56 @@ df <- data.frame(x=index, val=vals,
 ggplot(data = df, aes(x=index, y=vals)) + geom_line(aes(colour=pc)) + xlab("Principal component") + ylab("Correlation") + scale_y_continuous(limits = c(-1, 1))
 ```
 
+# Simple linear regression model predicting positive rate
+```{r}
+# percentage of getting dec_o = 1 (if a participant had 10 dates and 5 partners chose dec = 1, then positive rate = 50%)
+positive_rate <- SD %>% subset(select = c('iid', 'dec', 'dec_o')) %>%
+  group_by(iid) %>%
+  summarise(Rate = sum(dec_o)/n())
 
+means <- SD %>% subset(select = c('iid', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like_o')) %>%
+  group_by(iid) %>%
+  summarise(Attr = mean(attr_o, na.rm = T),
+            Sinc = mean(sinc_o, na.rm = T),
+            Intel = mean(intel_o, na.rm = T),
+            Amb = mean(amb_o, na.rm = T),
+            Shar = mean(shar_o, na.rm = T),
+            Like = mean(like_o, na.rm = T)) 
+
+means_no_NA <- SD %>% subset(select = c('iid', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like_o')) %>%
+  group_by(iid) %>%
+  summarise(Attr = mean(attr_o),
+            Sinc = mean(sinc_o),
+            Intel = mean(intel_o),
+            Amb = mean(amb_o),
+            Shar = mean(shar_o),
+            Like = mean(like_o)) %>%
+  drop_na()
+
+dataset <- left_join(means_no_NA, positive_rate, by = 'iid')
+X <- as.matrix(dataset[, c(2, 3, 5, 7)])
+# Feature transformation
+X <- t(apply(X, 1, '-', colMeans(X))) # subtracting mean
+X <- t(apply(X, 1, '/', apply(X, 2, sd))) # dividing by standard deviation
+apply(X, 2, mean)
+apply(X, 2, sd)
+
+Y <- as.matrix(dataset[, 'Rate'])
+
+cor(X) # colinearity between Attr and Like :/
+
+model <- lm(Y ~ X)
+summary(model)
+
+y_est <- model$fitted.values
+residuals <- model$residuals
+
+plot(Y, y_est)
+
+# Residuals are normally distributed!
+hist(Y-y_est)
+shapiro.test(residuals)$p.value
+
+# Mean squared error
+mean((Y-y_est)^2)
+```
