@@ -11,6 +11,7 @@ library(dplyr)
 library(ggplot2)
 library(reshape2)
 library(tidyr)
+library(rpart)
 setwd('C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/Project I')
 
 #setwd("/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating")
@@ -34,7 +35,7 @@ length(unique(SD$iid[which(SD$gender == 1)])) # 277
 ```
 
 
-## Missing values
+## Data cleaning
 ```{r}
 NAs <- sapply(SD, function(x) sum(is.na(x)))
 sort(NAs[which(NAs > 0)]) 
@@ -162,10 +163,7 @@ df <- subset(SD, !duplicated(SD$iid), select = c('attr1_1', 'sinc1_1', 'intel1_1
 
 df_long <- pivot_longer(df[complete.cases(df),], colnames(df))
 attr_idx <- unique(df_long$name)
-#attr_val <- c('Attractiveness', 'Sincerity', 'Intelligence', 'Fun', 'Ambition', 'Shared interests', 'Age', 'Income')
-#df_long$name <- attr_val[match(df_long$name, attr_idx)]
 df_long$name <- factor(df_long$name , levels=attr_idx)
-
 
 df_long %>% ggplot(aes(x = name, y = value, fill = name)) + geom_boxplot(show.legend = F) + 
   xlab('Feature') + ylab('Value') + ggtitle('Distribution of chosen features after scaling') +
@@ -251,7 +249,7 @@ melted_cor %>% ggplot(aes(x = Var1, y = Var2, fill = value)) + geom_tile() +
                 title.position = "top", title.hjust = 0.5))
 ```
 
-## Explanatory analysis
+## Exploratory analysis
 ```{r}
 # Importance of each attribute by gender
 attr <- subset(SD, !duplicated(SD$iid), select = c(3, 70:75)) %>%
@@ -519,6 +517,11 @@ means_no_NA <- SD %>% subset(select = c('iid', 'attr_o', 'sinc_o', 'intel_o', 'a
             Like = mean(like_o)) %>%
   drop_na()
 
+means_no_NA <- SD %>% subset(select = c('iid', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like_o')) %>%
+  group_by(iid) %>%
+  summarise(across(attr_o:like_o, mean)) %>%
+  drop_na()
+
 dataset <- left_join(means_no_NA, positive_rate, by = 'iid')
 X <- as.matrix(dataset[, c(2, 3, 5, 7)])
 # Feature transformation
@@ -531,7 +534,7 @@ Y <- as.matrix(dataset[, 'Rate'])
 
 cor(X) # colinearity between Attr and Like :/
 
-model <- lm(Y ~ X)
+model <- glm(Y ~ X)
 summary(model)
 
 y_est <- model$fitted.values
@@ -545,4 +548,136 @@ shapiro.test(residuals)$p.value
 
 # Mean squared error
 mean((Y-y_est)^2)
+mean((Y-y_est)^2)/mean(Y)
+```
+
+# Linear regression with R tidymodels
+
+```{r}
+library('tidymodels')
+
+dataset <- left_join(means_no_NA, positive_rate, by = 'iid')
+
+set.seed(123)
+dataset_split <-initial_split(dataset[, c(c(2:8))])
+train <- training(dataset_split)
+test <- testing(dataset_split)
+
+set.seed(345)
+folds <- vfold_cv(train)
+folds
+
+data_rec <- recipe(Rate ~ ., data = train)
+
+# Linear regression
+lm_spec <- linear_reg() %>%
+  set_engine('lm')
+
+# Random forsets
+rf_spec <- rand_forest(trees = 1000) %>%
+  set_engine('ranger') %>%
+  set_mode('regression')
+
+#install.packages('doParallel')
+#library(doParallel)
+#doParallel::registerDoParallel()
+
+# Workflow - fitting on resamples
+lm_wf <- workflow() %>%
+  add_recipe(data_rec) %>%
+  add_model(lm_spec) %>%
+  fit_resamples(
+    resamples = folds,
+    metrics = metric_set(rmse, mae, rsq_trad),
+    control = control_resamples(save_pred = T) # saves predictions
+  )
+
+#library('ranger')
+rf_wf <- workflow() %>%
+  add_recipe(data_rec) %>%
+  add_model(rf_spec) %>%
+  fit_resamples(
+    resamples = folds,
+    metrics = metric_set(rmse, mae, rsq_trad),
+    control = control_resamples(save_pred = T) # saves predictions
+  )
+
+# every recipe is being executed on every fold and then random forest model is being fit on it and evaluated on the hold out set in 'splits' (resample)
+
+collect_metrics(lm_wf)
+collect_metrics(rf_wf)
+
+# fitting on training data
+final <- workflow() %>%
+  add_recipe(data_rec) %>%
+  add_model(lm_spec) %>%
+  last_fit(dataset_split)
+
+collect_metrics(final)
+collect_predictions(final)
+
+#library(tidyverse)
+final %>% pull(.workflow) %>%
+  pluck(1) %>%
+  tidy() %>%
+  filter(term != '(Intercept)') %>%
+  ggplot(aes(estimate, fct_reorder(term, estimate))) + geom_point(size = 4) +
+  geom_vline(xintercept = 0, lty = 2) +
+  geom_errorbar(aes(xmin = estimate - std.error, 
+                    xmax = estimate + std.error),
+                width = 0.3) + theme_minimal()
+  
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+match_rate <- subset(SD, select = c('iid', 'match', 'dec', 'dec_o')) %>%
+  group_by(iid) %>%
+  summarise(match_rate = sum(match)/n()) 
+
+```
+
+```{r}
+cols <- c('gender', 'age', 'age_o', 'race_explained', 'race_explained_o', 'pf_o_att', 'pf_o_sin', 'pf_o_int', 'pf_o_fun', 'pf_o_amb', 'pf_o_sha', 'attr1_1', 'sinc1_1', 'intel1_1', 'amb1_1', 'shar1_1', 'attr', 'sinc', 'intel', 'amb', 'shar', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like', 'like_o', 'prob', 'prob_o', 
+          'attr3_1', 'sinc3_1', 'intel3_1', 'amb3_1')
+
+df <- subset(SD, select = cols)
+dim(df)
+df <- df[complete.cases(df),]
+
+df %>% count(race_explained, gender)
+
+subset(SD, select = c('iid', 'attr', 'attr3_1', 'match')) %>%
+  mutate(type = case_when(attr3_1 < 5 ~ 'underestimated',
+                          attr3_1 > 7 ~ 'overestimated',
+                          TRUE ~ 'realistic'),
+         diff = attr3_1 - attr) %>%
+  #ggplot(aes(diff, fill = type)) + geom_histogram(bins = 20)
+  group_by(iid) %>%
+  summarise(mean_attr_rating = mean(attr),
+            match_rate = sum(match)/n(),
+            attr3_1 = unique(attr3_1)) %>%
+  mutate(type = case_when(attr3_1 - mean_attr_rating < -1.5 ~ 'underestimated',
+                          attr3_1 - mean_attr_rating > 1.5 ~ 'overestimated',
+                          TRUE ~ 'realistic')) %>%
+  ggplot(aes(mean_attr_rating, match_rate, color = type)) + geom_point(pch = 1, size = 3)
+  
+  summarise(match_rate = sum(match)/n(),
+            attr3_1 = unique(attr3_1)) %>%
+  ggplot(aes(attr3_1, match_rate)) + geom_col()
+
+head(SD, 50)
+
 ```
