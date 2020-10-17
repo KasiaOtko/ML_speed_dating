@@ -1,3 +1,8 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
 ## Authors
 
 Katarzyna Otko - s202872  
@@ -105,7 +110,6 @@ SD$race_explained <- race_val[match(SD$race, race_idx)]
 SD$race_explained_o <- race_val[match(SD$race_o, race_idx)]
 
 # adding one column with explanation for field_cd column (matching index with race names)
-# DISCUSS WITH ALVILS IMPUTING DATA INTO field_cd as 9 (because field is Operations Research)
 field_idx <- c(1:18, NA)
 field_val <- c('Law', 'Math', 'Social Science, Psychologist', 'Medical Science/Pharmaceuticals/Bio Tech',
                'Engineering', 'English/Creative Writing/ Journalism', 'History/Religion/Philosophy',
@@ -491,12 +495,17 @@ df <- data.frame(x=index, val=vals,
 ggplot(data = df, aes(x=index, y=vals)) + geom_line(aes(colour=pc)) + xlab("Principal component") + ylab("Correlation") + scale_y_continuous(limits = c(-1, 1))
 ```
 
-# Simple linear regression model predicting positive rate
+# Linear regression model predicting positive rate
+
 ```{r}
 # percentage of getting dec_o = 1 (if a participant had 10 dates and 5 partners chose dec = 1, then positive rate = 50%)
 positive_rate <- SD %>% subset(select = c('iid', 'dec', 'dec_o')) %>%
   group_by(iid) %>%
   summarise(Rate = sum(dec_o)/n())
+
+match_rate <- subset(SD, select = c('iid', 'match', 'dec', 'dec_o')) %>%
+  group_by(iid) %>%
+  summarise(match_rate = mean(match)) 
 
 means <- SD %>% subset(select = c('iid', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like_o')) %>%
   group_by(iid) %>%
@@ -505,17 +514,7 @@ means <- SD %>% subset(select = c('iid', 'attr_o', 'sinc_o', 'intel_o', 'amb_o',
             Intel = mean(intel_o, na.rm = T),
             Amb = mean(amb_o, na.rm = T),
             Shar = mean(shar_o, na.rm = T),
-            Like = mean(like_o, na.rm = T)) 
-
-means_no_NA <- SD %>% subset(select = c('iid', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like_o')) %>%
-  group_by(iid) %>%
-  summarise(Attr = mean(attr_o),
-            Sinc = mean(sinc_o),
-            Intel = mean(intel_o),
-            Amb = mean(amb_o),
-            Shar = mean(shar_o),
-            Like = mean(like_o)) %>%
-  drop_na()
+            Like = mean(like_o, na.rm = T))
 
 means_no_NA <- SD %>% subset(select = c('iid', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like_o')) %>%
   group_by(iid) %>%
@@ -559,15 +558,16 @@ library('tidymodels')
 dataset <- left_join(means_no_NA, positive_rate, by = 'iid')
 
 set.seed(123)
-dataset_split <-initial_split(dataset[, c(c(2:8))])
+dataset_split <-initial_split(dataset[, c(c(2:8))], strata = 'Rate') #equal number of classes for each split
 train <- training(dataset_split)
 test <- testing(dataset_split)
 
+# validation sets for tuning the model
 set.seed(345)
 folds <- vfold_cv(train)
 folds
 
-data_rec <- recipe(Rate ~ ., data = train)
+data_rec <- recipe(Rate ~ ., data = train) 
 
 # Linear regression
 lm_spec <- linear_reg() %>%
@@ -580,7 +580,7 @@ rf_spec <- rand_forest(trees = 1000) %>%
 
 #install.packages('doParallel')
 #library(doParallel)
-#doParallel::registerDoParallel()
+doParallel::registerDoParallel()
 
 # Workflow - fitting on resamples
 lm_wf <- workflow() %>%
@@ -616,8 +616,9 @@ final <- workflow() %>%
 collect_metrics(final)
 collect_predictions(final)
 
-#library(tidyverse)
-final %>% pull(.workflow) %>%
+library(tidyverse)
+# plotting estimates without an intercept
+final %>% pull(.workflow) %>% # similar to final$.workflow
   pluck(1) %>%
   tidy() %>%
   filter(term != '(Intercept)') %>%
@@ -626,28 +627,192 @@ final %>% pull(.workflow) %>%
   geom_errorbar(aes(xmin = estimate - std.error, 
                     xmax = estimate + std.error),
                 width = 0.3) + theme_minimal()
-  
-
 ```
 
 
+# Classification
 
-
-
-
-
-
-
-
-
-
+## Data preparation
 
 ```{r}
-match_rate <- subset(SD, select = c('iid', 'match', 'dec', 'dec_o')) %>%
+#install.packages("sjmisc")
+library(sjmisc)
+
+cols <- c('iid', 'gender', 'age', 'age_o', 'race_explained', 'race_explained_o', 'samerace', 'pf_o_att', 'pf_o_sin', 'pf_o_int', 'pf_o_fun', 'pf_o_amb', 'pf_o_sha', 'attr1_1', 'sinc1_1', 'intel1_1', 'amb1_1', 'shar1_1', 'attr', 'sinc', 'intel', 'amb', 'shar', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like', 'like_o', 'prob', 'prob_o', 'match')
+
+df <- subset(SD, select = c('iid', 'attr', 'attr3_1', 'match')) %>%
+  mutate(diff = attr3_1 - attr) %>%
   group_by(iid) %>%
-  summarise(match_rate = sum(match)/n()) 
+  summarise(mean_diff = mean(diff, na.rm = T),
+            type = case_when(mean_diff < -1.5 ~ 'underestimated',
+                             mean_diff > 1.5 ~ 'overestimated',
+                             TRUE ~ 'realistic')) %>%
+  add_column(positive_rate = positive_rate$Rate, match_rate = match_rate$match_rate)
+df
+
+age_mean <- as.integer(mean(SD$age, na.rm = T))
+
+data <- SD[, cols]
+data <- left_join(data, df, by = 'iid') %>%
+  tidyr::replace_na(list(age = age_mean, age_o = age_mean)) %>%
+  mutate(age_gap = abs(age - age_o)) %>%
+  subset(select = c(-age, -age_o, -iid, -type, -race_explained, -race_explained_o, -positive_rate, -match_rate)) %>%
+  drop_na() %>% 
+  mutate(gender = as.factor(gender),
+         samerace = as.factor(samerace),
+         match = as.factor(match))
+  
+sum(is.na(data)); dim(SD); dim(data); colnames(data)
+
+levels(data$match) # Need to change the levels because the models view the first level as positive
+data <- data %>%
+  mutate(match = fct_rev(match))
+```
+
+## Building a model (KNN)
+
+```{r}
+set.seed(123)
+data_split <- initial_split(data, strata = match)
+train <- training(data_split)
+test <- testing(data_split)
+
+set.seed(456)
+folds <- vfold_cv(train)
+folds
+
+# Defining a recipe
+data_rec <- recipe(match ~ ., data = train) %>%
+  step_normalize(all_numeric())
+
+# Executing the recipe
+norm <- data_rec %>% prep() %>% juice()
+norm %>% select(where(is.numeric)) %>% sapply(mean)
+norm %>% select(where(is.numeric)) %>% sapply(sd)
+
+# Selecting metrics
+c_metrics <- metric_set(accuracy, sens, roc_auc, mn_log_loss)
+
+# Saving predictions
+model_control <- control_grid(save_pred = T)
+
+# Defining a model
+#install.packages('kknn')
+library(kknn)
+knn_spec <- nearest_neighbor(neighbors = tune()) %>%
+  set_mode('classification') %>%
+  set_engine('kknn')
+
+knn_grid <- grid_regular(parameters(knn_spec), levels = 5)
+
+knn_tune <- tune_grid(
+  knn_spec,
+  data_rec,
+  resamples = folds,
+  control = model_control,
+  metrics = c_metrics
+)
+
+# Plotting metrics
+collect_metrics(knn_tune) %>%
+  ggplot(aes(x = neighbors, y = mean)) + 
+  geom_point() + geom_line() + 
+  facet_wrap(~.metric, scales = 'free_y')
+
+# to see variance between each fold
+knn_tune %>% select(id, .metrics) %>%
+  unnest(.metrics) %>%
+  ggplot(aes(x = neighbors, y = .estimate, color = id)) + geom_point() + geom_line() + 
+  facet_wrap(~.metric, scales = 'free_y')
+
+data_metrics <- knn_tune %>% collect_predictions() %>%
+  mutate(pred = if_else(.pred_1 >= .5, 1, 0),
+         pred = as.factor(pred),
+         pred = fct_rev(pred)) 
+
+data_metrics %>%
+  conf_mat(match, pred) #quite a lot of false negatives :/
+
+data_metrics %>% accuracy(match, pred)
+data_metrics %>% sens(match, pred) # pooor sensitivity
+data_metrics %>% ppv(match, pred) 
+
+# roc curve
+knn_tune %>% collect_predictions() %>%
+  group_by(id) %>%
+  roc_curve(match, .pred_1) %>%
+  autoplot()
+
+# gain curve - how much of the class I encapture given the class probabilities, that is, if we say that everyone with the 50% prob. or less being a "match" (1) class, we can capture around 80% of the actual points
+knn_tune %>% 
+  collect_predictions() %>%
+  gain_curve(match, .pred_1) %>%
+  autoplot()
+  
+# Collect metrics and fit to a model
+knn_tune %>% select_best(metric = 'roc_auc')
+knn_tune %>% select_best(metric = 'accuracy')
+
+# Defining a final model
+knn_spec_final <- nearest_neighbor(neighbors = 14) %>%
+  set_mode('classification') %>%
+  set_engine('kknn')
+
+# Defining a workflow
+final_model <- workflow() %>%
+  add_model(knn_spec_final) %>%
+  add_recipe(data_rec)
+
+# Fitting a final model
+final_results <- last_fit(final_model, data_split)
+
+# if we say 50% of these people got match, around 50% of those people actually got match
+final_results %>% collect_predictions() %>%
+  select(.pred_1, match) %>%
+  mutate(.pred = 100*.pred_1) %>%
+  select(-.pred_1) %>%
+  mutate(.pred = round(.pred/5)*5) %>% #rounding to 5
+  count(.pred, match) %>%
+  pivot_wider(names_from = match, values_from = n) %>%
+  rename(Yes = `1`, No = `0`) %>%
+  mutate(prob = Yes/(Yes + No)) %>%
+  mutate(prob = prob*100) %>%
+  ggplot(aes(x = .pred, y = prob)) + geom_point() + geom_smooth() + geom_abline() +
+  coord_fixed(ylim = c(0,100), xlim = c(0, 100))
+```
+
+# Place to work on different models
+
+```{r}
+
+rf_ranger_spec <- rand_forest(trees = 1000, mode = "classification") %>%
+  set_engine('ranger')
+
+rf_rf_spec <- rand_forest(trees = 1000, mode = "classification") %>%
+  set_engine('random_forest')
+
+lg_spec <- logistic_reg(mode = "classification") %>%
+  set_engine('glm')
+
+# Defining workflows
+rf_ranger_wf <- workflow() %>%
+  add_recipe(data_rec) %>%
+  add_model(rf_ranger_spec) %>%
+  fit_resamples(
+    resamples = folds,
+    metrics = metric_set(),
+    control = control_resamples(save_pred = T)
 
 ```
+
+
+
+
+
+
+
+
+
 
 ```{r}
 cols <- c('gender', 'age', 'age_o', 'race_explained', 'race_explained_o', 'pf_o_att', 'pf_o_sin', 'pf_o_int', 'pf_o_fun', 'pf_o_amb', 'pf_o_sha', 'attr1_1', 'sinc1_1', 'intel1_1', 'amb1_1', 'shar1_1', 'attr', 'sinc', 'intel', 'amb', 'shar', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like', 'like_o', 'prob', 'prob_o', 
