@@ -1,0 +1,139 @@
+---
+title: "Regression"
+author: "Katarzyna Otko"
+date: "3 11 2020"
+output: html_document
+---
+# Linear regression model predicting positive rate
+
+```{r}
+# percentage of getting dec_o = 1 (if a participant had 10 dates and 5 partners chose dec = 1, then positive rate = 50%)
+positive_rate <- SD %>% subset(select = c('iid', 'dec', 'dec_o')) %>%
+  group_by(iid) %>%
+  summarise(Rate = sum(dec_o)/n())
+
+match_rate <- subset(SD, select = c('iid', 'match', 'dec', 'dec_o')) %>%
+  group_by(iid) %>%
+  summarise(match_rate = mean(match)) 
+
+means <- SD %>% subset(select = c('iid', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like_o')) %>%
+  group_by(iid) %>%
+  summarise(Attr = mean(attr_o, na.rm = T),
+            Sinc = mean(sinc_o, na.rm = T),
+            Intel = mean(intel_o, na.rm = T),
+            Amb = mean(amb_o, na.rm = T),
+            Shar = mean(shar_o, na.rm = T),
+            Like = mean(like_o, na.rm = T))
+
+means_no_NA <- SD %>% subset(select = c('iid', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like_o')) %>%
+  group_by(iid) %>%
+  summarise(across(attr_o:like_o, mean)) %>%
+  drop_na()
+
+dataset <- left_join(means_no_NA, positive_rate, by = 'iid')
+X <- as.matrix(dataset[, c(2, 3, 5, 7)])
+# Feature transformation
+X <- t(apply(X, 1, '-', colMeans(X))) # subtracting mean
+X <- t(apply(X, 1, '/', apply(X, 2, sd))) # dividing by standard deviation
+apply(X, 2, mean)
+apply(X, 2, sd)
+
+Y <- as.matrix(dataset[, 'Rate'])
+
+cor(X) # colinearity between Attr and Like :/
+cor(dataset[, c(2, 3, 5, 7, 8)])
+model <- lm(Y ~ X)
+summary(model)
+
+y_est <- model$fitted.values
+residuals <- model$residuals
+
+plot(Y, y_est)
+
+# Residuals are normally distributed!
+hist(Y-y_est)
+shapiro.test(residuals)$p.value
+
+# Mean squared error
+mean((Y-y_est)^2)
+mean((Y-y_est)^2)/mean(Y)
+```
+
+# Linear regression with R tidymodels
+
+```{r}
+library('tidymodels')
+
+dataset <- left_join(means_no_NA, positive_rate, by = 'iid')
+
+set.seed(123)
+dataset_split <-initial_split(dataset[, c(2:8)], strata = 'Rate') #equal number of classes for each split
+train <- training(dataset_split)
+test <- testing(dataset_split)
+
+# validation sets for tuning the model
+set.seed(345)
+folds <- vfold_cv(train)
+folds
+
+data_rec <- recipe(Rate ~ ., data = train) 
+
+# Linear regression
+lm_spec <- linear_reg() %>%
+  set_engine('lm')
+
+# Random forsets
+rf_spec <- rand_forest(trees = 1000) %>%
+  set_engine('ranger') %>%
+  set_mode('regression')
+
+#install.packages('doParallel')
+#library(doParallel)
+doParallel::registerDoParallel()
+
+# Workflow - fitting on resamples
+lm_wf <- workflow() %>%
+  add_recipe(data_rec) %>%
+  add_model(lm_spec) %>%
+  fit_resamples(
+    resamples = folds,
+    metrics = metric_set(rmse, mae, rsq_trad),
+    control = control_resamples(save_pred = T) # saves predictions
+  )
+
+#library('ranger')
+rf_wf <- workflow() %>%
+  add_recipe(data_rec) %>%
+  add_model(rf_spec) %>%
+  fit_resamples(
+    resamples = folds,
+    metrics = metric_set(rmse, mae, rsq_trad),
+    control = control_resamples(save_pred = T) # saves predictions
+  )
+
+# every recipe is being executed on every fold and then random forest model is being fit on it and evaluated on the hold out set in 'splits' (resample)
+
+collect_metrics(lm_wf)
+collect_metrics(rf_wf)
+
+# fitting on training data
+final <- workflow() %>%
+  add_recipe(data_rec) %>%
+  add_model(lm_spec) %>%
+  last_fit(dataset_split)
+
+collect_metrics(final)
+collect_predictions(final)
+
+library(tidyverse)
+# plotting estimates without an intercept
+final %>% pull(.workflow) %>% # similar to final$.workflow
+  pluck(1) %>%
+  tidy() %>%
+  filter(term != '(Intercept)') %>%
+  ggplot(aes(estimate, fct_reorder(term, estimate))) + geom_point(size = 4) +
+  geom_vline(xintercept = 0, lty = 2) +
+  geom_errorbar(aes(xmin = estimate - std.error, 
+                    xmax = estimate + std.error),
+                width = 0.3) + theme_minimal()
+```

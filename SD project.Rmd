@@ -495,6 +495,91 @@ df <- data.frame(x=index, val=vals,
 ggplot(data = df, aes(x=index, y=vals)) + geom_line(aes(colour=pc)) + xlab("Principal component") + ylab("Correlation") + scale_y_continuous(limits = c(-1, 1))
 ```
 
+# PCA with tidymodels
+
+```{r}
+cols <- c('gender', 'age', 'age_o', 'race_explained', 'race_explained_o', 'pf_o_att', 'pf_o_sin', 'pf_o_int', 'pf_o_fun', 'pf_o_amb', 'pf_o_sha', 'attr1_1', 'sinc1_1', 'intel1_1', 'amb1_1', 'shar1_1', 'attr', 'sinc', 'intel', 'amb', 'shar', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like', 'like_o', 'prob', 'prob_o')
+Y <- subset(SD, !duplicated(SD$iid), select = cols)
+match <- subset(SD, !duplicated(SD$iid), select = c("match"))
+
+asian <- ifelse(Y$race_explained == 'Asian', 1, 0)
+european <- ifelse(Y$race_explained == 'European', 1, 0)
+other <- ifelse(Y$race_explained == 'Other', 1, 0)
+latino <- ifelse(Y$race_explained == 'Latino', 1, 0)
+black <- ifelse(Y$race_explained == 'Black', 1, 0)
+
+asian_o <- ifelse(Y$race_explained_o == 'Asian', 1, 0)
+european_o <- ifelse(Y$race_explained_o == 'European', 1, 0)
+other_o <- ifelse(Y$race_explained_o == 'Other', 1, 0)
+latino_o <- ifelse(Y$race_explained_o == 'Latino', 1, 0)
+black_o <- ifelse(Y$race_explained_o == 'Black', 1, 0)
+
+Y <- cbind(Y, asian, european, other, latino, black, asian_o, european_o, other_o, latino_o, black_o)
+match = match[complete.cases(Y), ]
+
+Y <- Y[complete.cases(Y), ]
+cols_cat <- c('asian', 'european', 'other', 'latino', 'black', 'asian_o', 'european_o', 'other_o', 'latino_o', 'black_o')
+
+Y[, cols_cat] <- Y[, cols_cat]/sqrt(5)
+
+colnames(Y)
+Y <- Y[, -c(4, 5)] #deleting categorical variables race and race_o
+Y <- Y[complete.cases(Y), ]
+match = match[complete.cases(Y)]
+
+Y_temp <- Y[, -which(colnames(Y) %in% c(cols_cat, 'gender'))]
+
+Y_temp <- t(apply(Y_temp, 1, '-', colMeans(Y_temp, na.rm = T))) # subtracting mean
+
+Y_temp <- t(apply(Y_temp, 1, '/', apply(Y_temp, 2, sd, na.rm = T))) # dividing by standard deviation
+colnames(Y)
+Y <- cbind(Y_temp, Y[, c(cols_cat, 'gender')])
+
+Y <- t(apply(Y, 1, '-', colMeans(Y, na.rm = T)))
+
+Y <- Y[complete.cases(Y), ]
+match = match[complete.cases(Y)]
+
+Y = Y - colMeans(Y)
+
+# Defining a recipe
+pca_rec <- recipe(~ ., Y) %>%
+  step_pca(all_predictors())
+
+# Prepping a recipe
+pca_prep <- prep(pca_rec)
+
+tidied_pca <- tidy(pca_prep, 1)
+
+tidied_pca %>%
+  filter(component %in% paste0("PC", 1:5)) %>%
+  mutate(component = fct_inorder(component)) %>%
+  ggplot(aes(x = value, y = terms, fill = terms)) + 
+  geom_col(show.legend = F) + 
+  facet_wrap(~component,nrow = 1)
+
+library(tidytext)
+tidied_pca %>%
+  filter(component %in% paste0("PC", 1:4)) %>%
+  group_by(component) %>%
+  top_n(8, abs(value)) %>%
+  ungroup() %>%
+  mutate(terms = reorder_within(terms, abs(value), component))%>%
+  ggplot(aes(abs(value), terms, fill = value < 0)) +
+  geom_col() + 
+  facet_wrap(~component, scales = 'free_y', nrow = 2)
+
+juice(pca_prep) %>%
+  add_column(match) %>%
+  ggplot(aes(PC1, PC2, col = factor(match))) + 
+  geom_point(alpha = .7, size = 2)
+
+  
+```
+
+
+
+
 # Linear regression model predicting positive rate
 
 ```{r}
@@ -532,8 +617,8 @@ apply(X, 2, sd)
 Y <- as.matrix(dataset[, 'Rate'])
 
 cor(X) # colinearity between Attr and Like :/
-
-model <- glm(Y ~ X)
+cor(dataset[, c(2, 3, 5, 7, 8)])
+model <- lm(Y ~ X)
 summary(model)
 
 y_est <- model$fitted.values
@@ -558,7 +643,7 @@ library('tidymodels')
 dataset <- left_join(means_no_NA, positive_rate, by = 'iid')
 
 set.seed(123)
-dataset_split <-initial_split(dataset[, c(c(2:8))], strata = 'Rate') #equal number of classes for each split
+dataset_split <-initial_split(dataset[, c(2:8)], strata = 'Rate') #equal number of classes for each split
 train <- training(dataset_split)
 test <- testing(dataset_split)
 
@@ -672,13 +757,13 @@ data <- data %>%
 ## Building a model (KNN)
 
 ```{r}
-set.seed(123)
+set.seed(456)
 data_split <- initial_split(data, strata = match)
 train <- training(data_split)
 test <- testing(data_split)
 
 set.seed(456)
-folds <- vfold_cv(train)
+folds <- vfold_cv(train, strata = match)
 folds
 
 # Defining a recipe
@@ -729,6 +814,10 @@ data_metrics <- knn_tune %>% collect_predictions() %>%
   mutate(pred = if_else(.pred_1 >= .5, 1, 0),
          pred = as.factor(pred),
          pred = fct_rev(pred)) 
+
+data_metrics %>%
+  group_by(id) %>%
+  summarise()
 
 data_metrics %>%
   conf_mat(match, pred) #quite a lot of false negatives :/
