@@ -3,10 +3,19 @@ title: "Regression"
 author: "Katarzyna Otko"
 date: "3 11 2020"
 output: html_document
+editor_options: 
+  chunk_output_type: console
 ---
 # Linear regression model predicting positive rate
 
 ```{r}
+library(tidyverse)
+library(tidymodels)
+
+setwd("C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/ML_speed_dating")
+
+SD <- read.csv('SD_clean.csv')
+
 # percentage of getting dec_o = 1 (if a participant had 10 dates and 5 partners chose dec = 1, then positive rate = 50%)
 positive_rate <- SD %>% subset(select = c('iid', 'dec', 'dec_o')) %>%
   group_by(iid) %>%
@@ -16,22 +25,21 @@ match_rate <- subset(SD, select = c('iid', 'match', 'dec', 'dec_o')) %>%
   group_by(iid) %>%
   summarise(match_rate = mean(match)) 
 
-means <- SD %>% subset(select = c('iid', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like_o')) %>%
-  group_by(iid) %>%
-  summarise(Attr = mean(attr_o, na.rm = T),
-            Sinc = mean(sinc_o, na.rm = T),
-            Intel = mean(intel_o, na.rm = T),
-            Amb = mean(amb_o, na.rm = T),
-            Shar = mean(shar_o, na.rm = T),
-            Like = mean(like_o, na.rm = T))
-
-means_no_NA <- SD %>% subset(select = c('iid', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like_o')) %>%
+means_no_NA <- SD %>% subset(select = c('iid', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'fun_o', 'like_o')) %>%
   group_by(iid) %>%
   summarise(across(attr_o:like_o, mean)) %>%
   drop_na()
 
 dataset <- left_join(means_no_NA, positive_rate, by = 'iid')
-X <- as.matrix(dataset[, c(2, 3, 5, 7)])
+
+
+```
+
+# First, basic linear regression model
+```{r}
+
+
+X <- as.matrix(dataset) #dataset[, c(2, 3, 5, 7)]
 # Feature transformation
 X <- t(apply(X, 1, '-', colMeans(X))) # subtracting mean
 X <- t(apply(X, 1, '/', apply(X, 2, sd))) # dividing by standard deviation
@@ -59,7 +67,64 @@ mean((Y-y_est)^2)
 mean((Y-y_est)^2)/mean(Y)
 ```
 
-# Linear regression with R tidymodels
+```{r}
+library('tidymodels')
+
+dataset <- left_join(means_no_NA, positive_rate, by = 'iid')
+
+set.seed(123)
+dataset_split <-initial_split(dataset[, c(2:9)], strata = 'Rate') #equal number of classes for each split
+train <- training(dataset_split)
+test <- testing(dataset_split)
+
+# validation sets for tuning the model
+set.seed(345)
+folds <- vfold_cv(train)
+folds
+
+data_rec <- recipe(Rate ~ ., data = train) %>%
+  step_normalize(all_predictors()) %>%
+  prep(training = train)
+
+wf <- workflow() %>%
+  add_recipe(data_rec)
+
+# Linear regression
+tune_spec <- linear_reg(penalty = tune(), mixture = 0) %>%
+  set_engine('glmnet') #%>%
+  #fit(Rate ~ ., data = juice(data_rec))
+
+lambda_grid <- grid_regular(penalty(), levels = 30)
+
+#doParallel::registerDoParallel()
+
+set.seed(2020)
+ridge_grid <- tune_grid(
+  wf %>% add_model(tune_spec),
+  resamples = folds,
+  grid = lambda_grid
+)
+
+collect_metrics(ridge_grid)
+
+ridge_grid %>%
+  collect_metrics() %>%
+  ggplot(aes(penalty, mean, color = .metric)) +
+  geom_errorbar(aes(
+    ymin = mean - std_err,
+    ymax = mean + std_err
+  ),
+  alpha = 0.5
+  ) +
+  geom_line(size = 1.5) +
+  facet_wrap(~.metric, scales = "free", nrow = 2) +
+  scale_x_log10() +
+  theme(legend.position = "none")
+```
+
+
+
+
 
 ```{r}
 library('tidymodels')
@@ -79,13 +144,13 @@ folds
 data_rec <- recipe(Rate ~ ., data = train) 
 
 # Linear regression
-lm_spec <- linear_reg() %>%
-  set_engine('lm')
+lm_spec <- linear_reg(penalty = 0.001, mixture = 0) %>%
+  set_engine('glmnet')
 
 # Random forsets
 rf_spec <- rand_forest(trees = 1000) %>%
   set_engine('ranger') %>%
-  set_mode('regression')
+  set_mode('regression') 
 
 #install.packages('doParallel')
 #library(doParallel)
@@ -136,4 +201,197 @@ final %>% pull(.workflow) %>% # similar to final$.workflow
   geom_errorbar(aes(xmin = estimate - std.error, 
                     xmax = estimate + std.error),
                 width = 0.3) + theme_minimal()
+```
+
+# According to scripts
+
+```{r}
+library(glmnet)
+library(cvTools)
+dataset <- left_join(means_no_NA, positive_rate, by = 'iid')
+dataset <- dataset[, 2:9] # We dont want iid column
+dataset <- cbind(const = rep(1,nrow(dataset)), dataset) # adding constant
+
+K = 10
+CV <- cvFolds(nrow(dataset), K=K)
+
+X <- dataset[, 1:8]
+y <- dataset[, 9]
+M <- ncol(X)
+lambda_tmp <- c(0, 10^seq(-3, 8, length.out = 20))
+T <- length(lambda_tmp)
+
+w <- matrix(nrow = M,ncol = K)
+rownames(w) <- colnames(X)
+coeff_per_lambda <- list()
+
+Error_train <- matrix(nrow = T, ncol = K)
+Error_test <- matrix(nrow = T, ncol = K)
+
+for (i in 1:length(lambda_tmp)) {
+  
+    for (k in 1:K) {
+    X_train <- X[CV$subsets[CV$which!=k], ];
+    y_train <- y[CV$subsets[CV$which!=k]];
+    X_test <- X[CV$subsets[CV$which==k], ];
+    y_test <- y[CV$subsets[CV$which==k]];
+    CV$TrainSize[k] <- length(y_train)
+    CV$TestSize[k] <- length(y_test)
+    
+    mu <- colMeans(X_train[, 2:8])
+    sigma <- apply(X_train[, 2:8], 2, sd)
+    
+    X_train[, 2:8] <- scale(X_train[, 2:8], mu, sigma)
+    X_test[, 2:8] <- scale(X_test[, 2:8], mu, sigma)
+      
+    CV$TrainSize[k] <- length(y_train)
+    CV$TestSize[k] <- length(y_test)
+      
+    Xty <- t(X_train) %*% y_train
+    XtX <- t(X_train) %*% as.matrix(X_train)
+    
+    lambdaI = lambda_tmp[i]*diag(M);
+    lambdaI[1, 1] = 0
+    w[, k] <- solve(XtX+lambdaI) %*% Xty
+    
+    Error_train[i,k] = sum((y_train - as.matrix(X_train) %*% w[,k])^2)
+    Error_test[i,k] = sum((y_test - as.matrix(X_test) %*% w[,k])^2)
+    }
+  coeff_per_lambda[[i]] <- w
+}
+
+train_error <- rowMeans(Error_train/CV$TrainSize)
+test_error <- rowMeans(Error_test/CV$TestSize)
+
+lambda_opt <- which.min(test_error)
+lambda_tmp[lambda_opt]
+
+# coefficients for optimal lambda
+
+sort(rowMeans(coeff_per_lambda[[lambda_opt]]), decreasing = TRUE)
+sort(rowMeans(coeff_per_lambda[[1]]), decreasing = TRUE)
+
+```
+
+## PLOTS
+
+```{r}
+par(mfrow=c(1,2))
+par(mgp=c(2.5,1,0))
+
+# Plot coefficients
+w_mean <- matrix(nrow = M, ncol = T)
+rownames(w_mean) <- rownames(w)
+for (i in 1:length(coeff_per_lambda)) {
+  lambda <- coeff_per_lambda[[i]]
+  w_mean[,i] <- rowMeans(lambda)
+}
+w_mean <- w_mean[order(w_mean[,1], decreasing = T),]
+
+colors_vector=rainbow(8)
+plot(log(lambda_tmp), w_mean[2,], type = 'l', col = colors_vector[2], ylim = c(min(w_mean),0.13),
+     ylab = 'Mean value of coefficients', xlab = 'Log(lambda)', main = 'Weights as a function of lambda')
+points(log(lambda_tmp), w_mean[2,], col = colors_vector[2])
+
+for (j in 3:M) {
+  lines(log(lambda_tmp), w_mean[j,])
+}
+
+for(i in 3:M){
+  points(log(lambda_tmp), w_mean[i,], col=colors_vector[i])
+  lines(log(lambda_tmp), w_mean[i,], col=colors_vector[i])
+}
+abline(v = log(lambda_tmp[lambda_opt]), lty = 2)
+legend_names <- names(w_mean[,1])[2:8]
+legend("topright", legend = c(legend_names, 'Opt. lambda'), lty = c(rep(1, 7), 2), col = c(colors_vector[2:8], 'black'), cex = .9)
+
+# Train/test error
+plot(log(lambda_tmp), train_error, type = 'l',
+      xlab="Log(lambda)", ylab="Error", main = 'Generalization error as a function of lambda',
+     ylim = c(min(test_error), max(train_error)), col = 'red')
+lines(log(lambda_tmp), test_error, col = 'blue')
+legend('bottomright', legend = c('Test error', 'Training error', 'Opt. lambda'), col = c('blue', 'red', 'black'), lty= c(1, 1, 2), cex = .95)
+abline(v = log(lambda_tmp[lambda_opt]), lty = 2)
+text(13.2, 0.0255, paste0('Optimal lambda: ', round(lambda_tmp[lambda_opt], 2)))
+
+coeff <- as.data.frame(sort(rowMeans(coeff_per_lambda[[lambda_opt]])[2:8], decreasing = TRUE))
+#coeff$name <- names(coeff)
+colnames(coeff) <- 'Coefficient'
+
+coeff %>% ggplot(aes(Coefficient, reorder(rownames(coeff), Coefficient))) + geom_point(size = 4) +
+  geom_vline(xintercept = 0, lty = 2) + 
+  xlab('Value') + ylab('Coefficient') + ggtitle('Coefficients\' values for the optimal lambda')+
+  theme_minimal() + # Changing theme
+  theme(plot.title = element_text(hjust = 0.5), # Centers title
+        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0), size = 12), # x/y labels position
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0), size = 12)) 
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+```{r}
+train_idx <- seq(1, 0.8*nrow(dataset))
+test_idx <- seq(430, nrow(dataset))
+X_train <- dataset[train_idx, 1:8]
+X_test <- dataset[test_idx, 1:8]
+
+y_train <- dataset[train_idx, 9]
+y_test <- dataset[test_idx, 9]
+dim(X_train)
+
+x <- as.matrix(X_train)
+y <- as.matrix(y_train)
+
+l1_net<- cv.glmnet(x, y, alpha=0)
+
+best_lambda_lasso <- l1_net$lambda.1se  # largest lambda in 1 SE
+lasso_coef <- l1_net$glmnet.fit$beta[,  # retrieve coefficients
+              l1_net$glmnet.fit$lambda  # at lambda.1se
+              == best_lambda_lasso]
+
+
+lasso_coef
+
+l1_net$lambda.min
+
+lambda_tmp <- 10^seq(-3, 5, length.out = 20)
+#lambda_tmp <- c(0, 0.04, 0.045, 0.05, 0.05451746, 0.06, 0.065, 0.07, 1)
+
+ridge_cv <- cv.glmnet(x, y, alpha = 0,  
+                      lambda = lambda_tmp, 
+                      standardize = TRUE, nfolds = 10) 
+  
+# Plot cross-validation results 
+plot(ridge_cv) 
+
+lambda_cv <- ridge_cv$lambda.min 
+lambda_cv
+# Fit final model, get its sum of squared 
+# residuals and multiple R-squared 
+model_cv <- glmnet(x, y, alpha = 0, lambda = lambda_cv, 
+                   standardize = TRUE) 
+y_hat_cv <- predict(model_cv, as.matrix(X_test)) 
+ssr_cv <- t(y_test - y_hat_cv) %*% (y_test - y_hat_cv) 
+rsq_ridge_cv <- cor(y_test, y_hat_cv)^2 
+
+res <- cv.glmnet(x, y, alpha = 0, lambda = lambda_tmp, 
+              standardize = TRUE) 
+plot(res, xvar = "lambda") 
+legend("bottomright", lwd = 1, col = 1:6,  
+       legend = colnames(X), cex = .7)
+
+
+
 ```
