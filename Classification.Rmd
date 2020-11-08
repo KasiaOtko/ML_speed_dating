@@ -10,6 +10,8 @@ library(data.table)    # provides enhanced data.frame
 library(ggplot2)       # plotting
 library(glmnet)        # ridge, elastic net, and lasso 
 library(R.utils)
+library(tidymodels)
+
 
 # data loading
 
@@ -20,18 +22,18 @@ data = data[ , -which(names(data) %in% rm_cols)]
 
 feature_names = c("age", "age_o", "go_out", "sports", "tvsports", "exercise", "dining", "museums", "art", "hiking","gaming", "clubbing", "reading", "tv", "theater", "movies", "concerts", "music", "shopping", "yoga", 
  "exphappy", "go_out_o", "sports_o", "tvsports_o", "exercise_o", "dining_o", "museums_o", "art_o", "hiking_o", "gaming_o", "clubbing_o",
- "reading_o", "tv_o", "theater_o", "movies_o", "concerts_o", "music_o", "shopping_o", "yoga_o", "exphappy_o")
+ "reading_o", "tv_o", "theater_o", "mvies_o", "concerts_o", "music_o", "shopping_o", "yoga_o", "exphappy_o")
 
 ```
 
 
 ```{r}
 ## Feature selection
-x = data.matrix(data[, -2])
+x = (data[, -2])
 x = scale(x)
-y = data.matrix(data[, 2])
+y = (data[, 2])
 
-l1_net <- cv.glmnet(x, y, family="binomial", alpha=1)
+l1_net <- cv.glmnet(data.matrix(x), data.matrix(y), family="binomial", alpha=1)
 best_lambda_lasso <- l1_net$lambda.1se  # largest lambda in 1 SE
 lasso_coef <- l1_net$glmnet.fit$beta[,  # retrieve coefficients
               l1_net$glmnet.fit$lambda  # at lambda.1se
@@ -41,6 +43,41 @@ features_to_use = unique(c(feature_names, colnames(x)[which(lasso_coef != 0)]))
 x = x[ , which(colnames(x) %in% features_to_use)]
 
 ```
+
+```{r}
+# nested cross-validation
+transformed_data = as.data.frame(cbind(x, match=y))
+outer_nb_folds = 10
+inner_nb_folds = 10
+nb_models = 10
+folds <- nested_cv(transformed_data, 
+                     outside = vfold_cv(strata = match,  v = outer_nb_folds), 
+                     inside = vfold_cv(strata = match,  v = inner_nb_folds))
+
+
+# outer fold
+for (i in 1:outer_nb_folds) {
+  outer_data = folds$splits[[i]]$data
+  idx_outer_train = folds$splits[[i]]$in_id
+  idx_outer_test = -which(as.numeric(rownames(outer_data)) %in% idx_outer_train)
+  outer_train = outer_data[idx_outer_train, ]
+  outer_test = outer_data[idx_outer_test, ]
+
+  # inner fold
+  for (j in 1:inner_nb_folds) {
+    inner_data = folds$inner_resamples[[i]]$splits[[j]]$data
+    idx_inner_train = folds$inner_resamples[[i]]$splits[[j]]$in_id
+    idx_inner_test = -which(as.numeric(rownames(inner_data)) %in% idx_inner_train)
+    inner_train = inner_data[idx_inner_train, ]
+    inner_test = inner_data[idx_inner_train, ]
+    for (k in 1:nb_models) {
+      
+    }
+  }
+}
+
+```
+
 
 
 ```{r}
