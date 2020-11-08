@@ -12,6 +12,12 @@ library(glmnet)        # ridge, elastic net, and lasso
 library(R.utils)
 library(tidymodels)
 
+SampleWeight <- function(target, weights) {
+  weight_per_sample = target
+  weight_per_sample[weight_per_sample == 0] = weights[1]
+  weight_per_sample[weight_per_sample == 1] = weights[2]
+  return (weight_per_sample)
+}
 
 # data loading
 
@@ -45,6 +51,12 @@ x = x[ , which(colnames(x) %in% features_to_use)]
 ```
 
 ```{r}
+
+## sample weighting
+weights_per_class = 1 / (table(y) / length(y))
+
+
+
 # nested cross-validation
 transformed_data = as.data.frame(cbind(x, match=y))
 outer_nb_folds = 10
@@ -55,8 +67,12 @@ folds <- nested_cv(transformed_data,
                      inside = vfold_cv(strata = match,  v = inner_nb_folds))
 
 
+
+
 # outer fold
 for (i in 1:outer_nb_folds) {
+  # divides in outer train/test
+
   outer_data = folds$splits[[i]]$data
   idx_outer_train = folds$splits[[i]]$in_id
   idx_outer_test = -which(as.numeric(rownames(outer_data)) %in% idx_outer_train)
@@ -65,16 +81,25 @@ for (i in 1:outer_nb_folds) {
 
   # inner fold
   for (j in 1:inner_nb_folds) {
+    # divides in inner train/test
     inner_data = folds$inner_resamples[[i]]$splits[[j]]$data
     idx_inner_train = folds$inner_resamples[[i]]$splits[[j]]$in_id
     idx_inner_test = -which(as.numeric(rownames(inner_data)) %in% idx_inner_train)
     inner_train = inner_data[idx_inner_train, ]
     inner_test = inner_data[idx_inner_train, ]
+    
+    # model train
     for (k in 1:nb_models) {
+      weights_inner = SampleWeight(inner_train[, ncol(inner_train)], weights_per_class)
       
     }
   }
+
+  weights_outer = SampleWeight(outer_train[, ncol(outer_train)], weights_per_class)
+
 }
+
+
 
 ```
 
