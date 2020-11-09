@@ -336,70 +336,194 @@ mean(Error_test_nofeatures)
 ```
 
 
-
-
-
-
-
-
-
-
-
+# Alvils's part
 
 ```{r}
-train_idx <- seq(1, 0.8*nrow(dataset))
-test_idx <- seq(430, nrow(dataset))
-X_train <- dataset[train_idx, 1:8]
-X_test <- dataset[test_idx, 1:8]
 
-y_train <- dataset[train_idx, 9]
-y_test <- dataset[test_idx, 9]
-dim(X_train)
-
-x <- as.matrix(X_train)
-y <- as.matrix(y_train)
-
-l1_net<- cv.glmnet(x, y, alpha=0)
-
-best_lambda_lasso <- l1_net$lambda.1se  # largest lambda in 1 SE
-lasso_coef <- l1_net$glmnet.fit$beta[,  # retrieve coefficients
-              l1_net$glmnet.fit$lambda  # at lambda.1se
-              == best_lambda_lasso]
+###############
+# data init
+#############
+data = dataset[,2:ncol(dataset)]
+x = data[, -ncol(data)]
+y = data[, ncol(data)]
+x = scale(x)
+transformed_data = as.data.frame(cbind(x, rate=y))
 
 
-lasso_coef
+#################
+#L2 reg
+################
 
-l1_net$lambda.min
+l2_reg <- function(train_source, train_target, test_source, test_target, lambda) {
 
-lambda_tmp <- 10^seq(-3, 5, length.out = 20)
-#lambda_tmp <- c(0, 0.04, 0.045, 0.05, 0.05451746, 0.06, 0.065, 0.07, 1)
+    # train model
+    net <- glmnet(data.matrix(train_source), 
+                        data.matrix(train_target), 
+                        alpha = 0,                             
+                        lambda = lambda)
+    
+    # train error
+    train_res = predict(net, data.matrix(train_source) ,s=lambda)
+    train_error = mean((train_res - train_target)^2)
+    
+    # test error
+    test_res = predict(net, data.matrix(test_source) ,s=lambda)
+    test_error = mean((test_res - test_target)^2)
 
-ridge_cv <- cv.glmnet(x, y, alpha = 0,  
-                      lambda = lambda_tmp, 
-                      standardize = TRUE, nfolds = 10) 
+    return (list(train_error, test_error))
+}
+
+
+
+outer_nb_folds = 10
+inner_nb_folds = 10
+params = seq(0, 1, by = 0.1)
+nb_params = length(params)
+best_model_hyperparam = rep(0, (nb_params - 1))
+error_per_fold = rep(0, outer_nb_folds)
+
+# creates nested crossvalidation both inside and outside fold is stratified
+folds <- nested_cv(transformed_data, 
+                     outside = vfold_cv(v = outer_nb_folds), 
+                     inside = vfold_cv(v = inner_nb_folds))
+
+
+# outer fold 
+for (i in 1:outer_nb_folds) {
+  # divides in outer train/test
+  outer_data = folds$splits[[i]]$data
+  idx_outer_train = folds$splits[[i]]$in_id
+  idx_outer_test = -which(as.numeric(rownames(outer_data)) %in% idx_outer_train)
+  outer_train = outer_data[idx_outer_train, ]
+  outer_test = outer_data[idx_outer_test, ]
+  inner_error = matrix(0L, nrow = inner_nb_folds, ncol = nb_params)
   
-# Plot cross-validation results 
-plot(ridge_cv) 
+  # inner fold
+  for (j in 1:inner_nb_folds) {
+    # divides in inner train/test
+    inner_data = folds$inner_resamples[[i]]$splits[[j]]$data
+    idx_inner_train = folds$inner_resamples[[i]]$splits[[j]]$in_id
+    idx_inner_test = -which(as.numeric(rownames(inner_data)) %in% idx_inner_train)
+    inner_train = inner_data[idx_inner_train, ]
+    inner_test = inner_data[idx_inner_test, ]
+    
+    # hyperparam optim
+    for (k in 1:nb_params) {
+      # trains model and gets train and test error
+      error = l2_reg(inner_train[, -ncol(inner_train)],
+                     inner_train[, ncol(inner_train)],
+                     inner_test[, -ncol(inner_test)],
+                     inner_test[, ncol(inner_test)],
+                     params[k])
+      # inner error for each inner fold
+      inner_error[j, k] = error[[2]]
+    }
+  }
+  
+  # calculates avg error for each model in inner fold and trains once more where the generalization error is minimum
+  min_idx = which.min(colMeans(inner_error))
+  best_model_hyperparam[i] = min_idx
+  error = l2_reg(outer_train[, -ncol(outer_train)],
+                 outer_train[, ncol(outer_train)],
+                 outer_test[, -ncol(outer_test)],
+                 outer_test[, ncol(outer_test)],
+                 params[min_idx])
+  error_per_fold[i] = error[[2]]
 
-lambda_cv <- ridge_cv$lambda.min 
-lambda_cv
-# Fit final model, get its sum of squared 
-# residuals and multiple R-squared 
-model_cv <- glmnet(x, y, alpha = 0, lambda = lambda_cv, 
-                   standardize = TRUE) 
-y_hat_cv <- predict(model_cv, as.matrix(X_test)) 
-ssr_cv <- t(y_test - y_hat_cv) %*% (y_test - y_hat_cv) 
-rsq_ridge_cv <- cor(y_test, y_hat_cv)^2 
+}
 
-res <- cv.glmnet(x, y, alpha = 0, lambda = lambda_tmp, 
-              standardize = TRUE) 
-plot(res, xvar = "lambda") 
-legend("bottomright", lwd = 1, col = 1:6,  
-       legend = colnames(X), cex = .7)
-
-
-
+# for table for project 2
+l2_gen_error = mean(error_per_fold)
+l2_error_per_fold = error_per_fold
+l2_params = params
+l2_best_hyperparam_per_fold = best_model_hyperparam
 ```
+
+```{r}
+#################
+#Base model
+################
+
+base <- function(train_source, train_target, test_source, test_target) {
+    # train error
+    train_res = mean(train_target)
+    train_error = mean((train_res - train_target)^2)
+    # test error
+    test_res = train_res
+    test_error = mean((test_res - test_target)^2)
+    return (list(train_error, test_error))
+}
+
+
+
+outer_nb_folds = 10
+inner_nb_folds = 10
+params = c(1)
+nb_params = length(params)
+best_model_hyperparam = rep(0, (nb_params - 1))
+error_per_fold = rep(0, outer_nb_folds)
+
+# creates nested crossvalidation both inside and outside fold is stratified
+folds <- nested_cv(transformed_data, 
+                     outside = vfold_cv(v = outer_nb_folds), 
+                     inside = vfold_cv(v = inner_nb_folds))
+
+
+# outer fold 
+for (i in 1:outer_nb_folds) {
+  # divides in outer train/test
+  outer_data = folds$splits[[i]]$data
+  idx_outer_train = folds$splits[[i]]$in_id
+  idx_outer_test = -which(as.numeric(rownames(outer_data)) %in% idx_outer_train)
+  outer_train = outer_data[idx_outer_train, ]
+  outer_test = outer_data[idx_outer_test, ]
+  inner_error = matrix(0L, nrow = inner_nb_folds, ncol = nb_params)
+  
+  # inner fold
+  for (j in 1:inner_nb_folds) {
+    # divides in inner train/test
+    inner_data = folds$inner_resamples[[i]]$splits[[j]]$data
+    idx_inner_train = folds$inner_resamples[[i]]$splits[[j]]$in_id
+    idx_inner_test = -which(as.numeric(rownames(inner_data)) %in% idx_inner_train)
+    inner_train = inner_data[idx_inner_train, ]
+    inner_test = inner_data[idx_inner_test, ]
+    # hyperparam optim
+    for (k in 1:nb_params) {
+      # trains model and gets train and test error
+      error = base(inner_train[, -ncol(inner_train)],
+                     inner_train[, ncol(inner_train)],
+                     inner_test[, -ncol(inner_test)],
+                     inner_test[, ncol(inner_test)])
+      # inner error for each inner fold
+      inner_error[j, k] = error[[2]]
+    }
+  }
+  
+  # calculates avg error for each model in inner fold and trains once more where the generalization error is minimum
+  min_idx = which.min(colMeans(inner_error))
+  best_model_hyperparam[i] = min_idx
+  error = base(outer_train[, -ncol(outer_train)],
+                 outer_train[, ncol(outer_train)],
+                 outer_test[, -ncol(outer_test)],
+                 outer_test[, ncol(outer_test)])
+  error_per_fold[i] = error[[2]]
+
+}
+
+# for table for project 2
+base_gen_error = mean(error_per_fold)
+base_error_per_fold = error_per_fold
+base_params = params
+base_best_hyperparam_per_fold = best_model_hyperparam
+```
+
+
+
+
+
+
+
+
 
 
 
@@ -568,5 +692,3 @@ final %>% pull(.workflow) %>% # similar to final$.workflow
                     xmax = estimate + std.error),
                 width = 0.3) + theme_minimal()
 ```
-
-
