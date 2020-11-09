@@ -1,3 +1,8 @@
+---
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
 in---
 title: "SD_project2"
 author: "Katarzyna Otko"
@@ -12,6 +17,9 @@ library(glmnet)        # ridge, elastic net, and lasso
 library(R.utils)
 
 # data loading
+setwd("C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/ML_speed_dating")
+data <- read.csv('SD_clean.csv')
+#SD <- data
 
 data <- read.csv('/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating/SD_clean.csv')
 
@@ -29,6 +37,7 @@ feature_names = c("age", "age_o", "go_out", "sports", "tvsports", "exercise", "d
 ## Feature selection
 x = data.matrix(data[, -2])
 x = scale(x)
+dim(x)
 y = data.matrix(data[, 2])
 
 l1_net <- cv.glmnet(x, y, family="binomial", alpha=1)
@@ -39,43 +48,38 @@ lasso_coef <- l1_net$glmnet.fit$beta[,  # retrieve coefficients
 features_to_use = unique(c(feature_names, colnames(x)[which(lasso_coef != 0)]))
 
 x = x[ , which(colnames(x) %in% features_to_use)]
-
 ```
 
 
 ```{r}
 
-## feature extracton
 
+```
 
+```{r}
 
 #install.packages("sjmisc")
 library(sjmisc)
-
-cols <- c('iid', 'gender', 'age', 'age_o', 'race_explained', 'race_explained_o', 'samerace', 'pf_o_att', 'pf_o_sin', 'pf_o_int', 'pf_o_fun', 'pf_o_amb', 'pf_o_sha', 'attr1_1', 'sinc1_1', 'intel1_1', 'amb1_1', 'shar1_1', 'attr', 'sinc', 'intel', 'amb', 'shar', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like', 'like_o', 'prob', 'prob_o', 'match')
-
+SD <- read.csv('SD_clean.csv')
+# Kasia's feature
+SD <- cbind(x, iid = SD[,'iid'], attr3_1 = SD[,'attr3_1'], match = SD[,'match'])
+SD <- as.data.frame(SD)
 df <- subset(SD, select = c('iid', 'attr', 'attr3_1', 'match')) %>%
   mutate(diff = attr3_1 - attr) %>%
   group_by(iid) %>%
-  summarise(mean_diff = mean(diff, na.rm = T),
-            type = case_when(mean_diff < -1.5 ~ 'underestimated',
-                             mean_diff > 1.5 ~ 'overestimated',
-                             TRUE ~ 'realistic')) %>%
-  add_column(positive_rate = positive_rate$Rate, match_rate = match_rate$match_rate)
-df
+  summarise(mean_diff = mean(diff))
 
-age_mean <- as.integer(mean(SD$age, na.rm = T))
-
+cols <- c(colnames(x), 'iid', 'match'); length(cols); dim(data)
 data <- SD[, cols]
 data <- left_join(data, df, by = 'iid') %>%
-  tidyr::replace_na(list(age = age_mean, age_o = age_mean)) %>%
   mutate(age_gap = abs(age - age_o)) %>%
-  subset(select = c(-age, -age_o, -iid, -type, -race_explained, -race_explained_o, -positive_rate, -match_rate)) %>%
-  drop_na() %>% 
-  mutate(gender = as.factor(gender),
-         samerace = as.factor(samerace),
+  subset(select = c(-age, -age_o, -iid)) %>% 
+  mutate(samerace = as.factor(samerace),
          match = as.factor(match))
-  
+
+colnames(SD)
+#cols <- c('iid', 'gender', 'age', 'age_o', 'race_explained', 'race_explained_o', 'samerace', 'pf_o_att', 'pf_o_sin', 'pf_o_int', 'pf_o_fun', 'pf_o_amb', 'pf_o_sha', 'attr1_1', 'sinc1_1', 'intel1_1', 'amb1_1', 'shar1_1', 'attr', 'sinc', 'intel', 'amb', 'shar', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like', 'like_o', 'prob', 'prob_o', 'match')
+
 sum(is.na(data)); dim(SD); dim(data); colnames(data)
 
 levels(data$match) # Need to change the levels because the models view the first level as positive
