@@ -157,6 +157,12 @@ l2_gen_error = mean(error_per_fold)
 l2_error_per_fold = error_per_fold
 l2_params = params
 l2_best_hyperparam_per_fold = best_model_hyperparam
+
+## final param selection
+params_to_use = l2_params[unique(l2_best_hyperparam_per_fold)]
+l2_net <- cv.glmnet(data.matrix(x), data.matrix(y), family="binomial", alpha=0, lambda = params_to_use)
+best_lambda_l2 <- l2_net$lambda.1se  # largest lambda in 1 SE
+
 ```
 
 
