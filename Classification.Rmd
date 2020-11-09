@@ -153,6 +153,7 @@ for (i in 1:outer_nb_folds) {
   error_per_fold[i] = error[[2]]
 
 }
+
 l2_gen_error = mean(error_per_fold)
 l2_error_per_fold = error_per_fold
 l2_params = params
