@@ -45,16 +45,6 @@ l2_reg <- function(train_source, train_target, test_source, test_target, lambda,
 
 
 
-
-
-
-
-
-
-
-
-
-
 # data loading
 data <- read.csv('/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating/SD_clean.csv')
 
@@ -122,7 +112,7 @@ for (i in 1:outer_nb_folds) {
     idx_inner_train = folds$inner_resamples[[i]]$splits[[j]]$in_id
     idx_inner_test = -which(as.numeric(rownames(inner_data)) %in% idx_inner_train)
     inner_train = inner_data[idx_inner_train, ]
-    inner_test = inner_data[idx_inner_train, ]
+    inner_test = inner_data[idx_inner_test, ]
     
     # hyperparam optim
     for (k in 1:nb_params) {
@@ -160,11 +150,16 @@ l2_params = params
 l2_best_hyperparam_per_fold = best_model_hyperparam
 
 ## final param selection
+weights = SampleWeight(y, weights_per_class)
 params_to_use = l2_params[unique(l2_best_hyperparam_per_fold)]
-l2_net <- cv.glmnet(data.matrix(x), data.matrix(y), family="binomial", alpha=0, lambda = params_to_use)
+l2_net <- cv.glmnet(data.matrix(x), data.matrix(y), family="binomial", alpha=0, lambda = params_to_use, weights = weights)
 best_lambda_l2 <- l2_net$lambda.1se  # largest lambda in 1 SE
 
+
+
 ```
+
+
 
 
 
