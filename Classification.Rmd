@@ -1,9 +1,4 @@
 ---
-output: html_document
-editor_options: 
-  chunk_output_type: console
----
-in---
 title: "SD_project2"
 author: "Katarzyna Otko"
 date: "3 11 2020"
@@ -15,71 +10,211 @@ library(data.table)    # provides enhanced data.frame
 library(ggplot2)       # plotting
 library(glmnet)        # ridge, elastic net, and lasso 
 library(R.utils)
+library(tidymodels)
 
+
+# helper functions
+SampleWeight <- function(target, weights) {
+  weight_per_sample = target
+  weight_per_sample[weight_per_sample == 0] = weights[1]
+  weight_per_sample[weight_per_sample == 1] = weights[2]
+  return (weight_per_sample)
+}
+
+
+l2_reg <- function(train_source, train_target, test_source, test_target, lambda, weights, tresh) {
+
+    # train model
+    net <- glmnet(data.matrix(train_source), 
+                        data.matrix(train_target), 
+                        alpha = 0,                             
+                        lambda = lambda, 
+                        weights = weights,
+                        family="binomial")
+    
+    # train error
+    train_res = predict(net, data.matrix(train_source) ,s=lambda)
+    train_res[train_res < tresh] = 0
+    train_res[train_res >= tresh] = 1
+    train_error = 1 - (sum(train_res == train_target) / length(train_target))
+    
+    # test error
+    test_res = predict(net, data.matrix(test_source) ,s=lambda)
+    test_res[test_res < tresh] = 0
+    test_res[test_res >= tresh] = 1
+    test_error = 1 - (sum(test_res == test_target) / length(test_target))
+    return (list(train_error, test_error))
+}
+
+
+######################################################
 # data loading
-setwd("C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/ML_speed_dating")
-data <- read.csv('SD_clean.csv')
-#SD <- data
-
+#####################################################
 data <- read.csv('/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating/SD_clean.csv')
 
+# removes columns that are irrevelant
 rm_cols = c("X","iid", "id", "idg", "condtn", "wave", "round", "position",  "order", "partner", "pid", "field", "field_cd",  "race", "from", "zipcode", "career", "career_c", "dec", "match_es", "satis_2", "length", "numdat_2", 'race', 'race_o', 'field_cd', 'field', 'int_corr', "dec_o", "race_explained","race_explained_o", "field_explained", "met", "met_o", "like", "like_o")
 data = data[ , -which(names(data) %in% rm_cols)]
 
+
+######################################################
+## Feature selection
+######################################################
 feature_names = c("age", "age_o", "go_out", "sports", "tvsports", "exercise", "dining", "museums", "art", "hiking","gaming", "clubbing", "reading", "tv", "theater", "movies", "concerts", "music", "shopping", "yoga", 
  "exphappy", "go_out_o", "sports_o", "tvsports_o", "exercise_o", "dining_o", "museums_o", "art_o", "hiking_o", "gaming_o", "clubbing_o",
- "reading_o", "tv_o", "theater_o", "movies_o", "concerts_o", "music_o", "shopping_o", "yoga_o", "exphappy_o")
-
-```
-
-
-```{r}
-## Feature selection
-x = data.matrix(data[, -2])
+ "reading_o", "tv_o", "theater_o", "mvies_o", "concerts_o", "music_o", "shopping_o", "yoga_o", "exphappy_o")
+# data normalization
+x = (data[, -2])
 x = scale(x)
-dim(x)
-y = data.matrix(data[, 2])
+y = (data[, 2])
 
-l1_net <- cv.glmnet(x, y, family="binomial", alpha=1)
+# l1 logistic regression model, where we choose features which weights are not 0
+l1_net <- cv.glmnet(data.matrix(x), data.matrix(y), family="binomial", alpha=1)
 best_lambda_lasso <- l1_net$lambda.1se  # largest lambda in 1 SE
 lasso_coef <- l1_net$glmnet.fit$beta[,  # retrieve coefficients
               l1_net$glmnet.fit$lambda  # at lambda.1se
               == best_lambda_lasso]
+
+# adds features to use from manual selection and automatic
 features_to_use = unique(c(feature_names, colnames(x)[which(lasso_coef != 0)]))
-
 x = x[ , which(colnames(x) %in% features_to_use)]
-```
-
-
-```{r}
-
 
 ```
 
 ```{r}
+##########################
+## L2 logistic regression
+##########################
+
+## sample weighting
+weights_per_class = 1 / (table(y) / length(y))
+
+# nested cross-validation
+transformed_data = as.data.frame(cbind(x, match=y))
+outer_nb_folds = 10
+inner_nb_folds = 10
+tresh = 0.5
+params = seq(0, 1, by = 0.1)
+nb_params = length(params)
+best_model_hyperparam = rep(0, (nb_params - 1))
+error_per_fold = rep(0, outer_nb_folds)
+
+
+
+#################
+# nested crossval
+#################
+
+# creates nested crossvalidation both inside and outside fold is stratified
+folds <- nested_cv(transformed_data, 
+                     outside = vfold_cv(strata = match,  v = outer_nb_folds), 
+                     inside = vfold_cv(strata = match,  v = inner_nb_folds))
+
+
+# outer fold 
+for (i in 1:outer_nb_folds) {
+  # divides in outer train/test
+  outer_data = folds$splits[[i]]$data
+  idx_outer_train = folds$splits[[i]]$in_id
+  idx_outer_test = -which(as.numeric(rownames(outer_data)) %in% idx_outer_train)
+  outer_train = outer_data[idx_outer_train, ]
+  outer_test = outer_data[idx_outer_test, ]
+  inner_error = matrix(0L, nrow = inner_nb_folds, ncol = nb_params)
+  
+  # inner fold
+  for (j in 1:inner_nb_folds) {
+    # divides in inner train/test
+    inner_data = folds$inner_resamples[[i]]$splits[[j]]$data
+    idx_inner_train = folds$inner_resamples[[i]]$splits[[j]]$in_id
+    idx_inner_test = -which(as.numeric(rownames(inner_data)) %in% idx_inner_train)
+    inner_train = inner_data[idx_inner_train, ]
+    inner_test = inner_data[idx_inner_test, ]
+    
+    # hyperparam optim
+    for (k in 1:nb_params) {
+      weights_inner = SampleWeight(inner_train[, ncol(inner_train)], weights_per_class)
+      # trains model and gets train and test error
+      error = l2_reg(inner_train[, -ncol(inner_train)],
+                     inner_train[, ncol(inner_train)],
+                     inner_test[, -ncol(inner_test)],
+                     inner_test[, ncol(inner_test)],
+                     params[k],
+                     weights_inner, 
+                     tresh)
+      # inner error for each inner fold
+      inner_error[j, k] = error[[2]]
+    }
+  }
+  
+  # calculates avg error for each model in inner fold and trains once more where the generalization error is minimum
+  min_idx = which.min(colMeans(inner_error))
+  best_model_hyperparam[i] = min_idx
+  weights_outer = SampleWeight(outer_train[, ncol(outer_train)], weights_per_class)
+  error = l2_reg(outer_train[, -ncol(outer_train)],
+                 outer_train[, ncol(outer_train)],
+                 outer_test[, -ncol(outer_test)],
+                 outer_test[, ncol(outer_test)],
+                 params[min_idx],
+                 weights_outer, 
+                 tresh)
+  error_per_fold[i] = error[[2]]
+
+}
+
+# for table for project 2
+l2_gen_error = mean(error_per_fold)
+l2_error_per_fold = error_per_fold
+l2_params = params
+l2_best_hyperparam_per_fold = best_model_hyperparam
+
+######################################
+## final param selection using crossval
+######################################
+weights = SampleWeight(y, weights_per_class)
+l2_net <- cv.glmnet(data.matrix(x), data.matrix(y), family="binomial", alpha=0, lambda = params, weights = weights)
+best_lambda_l2 <- l2_net$lambda.1se  # largest lambda in 1 SE
+
+
+
+```
+
+
+
+
+
+```{r}
+
+## feature extracton
+
+
 
 #install.packages("sjmisc")
 library(sjmisc)
-SD <- read.csv('SD_clean.csv')
-# Kasia's feature
-SD <- cbind(x, iid = SD[,'iid'], attr3_1 = SD[,'attr3_1'], match = SD[,'match'])
-SD <- as.data.frame(SD)
+
+cols <- c('iid', 'gender', 'age', 'age_o', 'race_explained', 'race_explained_o', 'samerace', 'pf_o_att', 'pf_o_sin', 'pf_o_int', 'pf_o_fun', 'pf_o_amb', 'pf_o_sha', 'attr1_1', 'sinc1_1', 'intel1_1', 'amb1_1', 'shar1_1', 'attr', 'sinc', 'intel', 'amb', 'shar', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like', 'like_o', 'prob', 'prob_o', 'match')
+
 df <- subset(SD, select = c('iid', 'attr', 'attr3_1', 'match')) %>%
   mutate(diff = attr3_1 - attr) %>%
   group_by(iid) %>%
-  summarise(mean_diff = mean(diff))
+  summarise(mean_diff = mean(diff, na.rm = T),
+            type = case_when(mean_diff < -1.5 ~ 'underestimated',
+                             mean_diff > 1.5 ~ 'overestimated',
+                             TRUE ~ 'realistic')) %>%
+  add_column(positive_rate = positive_rate$Rate, match_rate = match_rate$match_rate)
+df
 
-cols <- c(colnames(x), 'iid', 'match'); length(cols); dim(data)
+age_mean <- as.integer(mean(SD$age, na.rm = T))
+
 data <- SD[, cols]
 data <- left_join(data, df, by = 'iid') %>%
+  tidyr::replace_na(list(age = age_mean, age_o = age_mean)) %>%
   mutate(age_gap = abs(age - age_o)) %>%
-  subset(select = c(-age, -age_o, -iid)) %>% 
-  mutate(samerace = as.factor(samerace),
+  subset(select = c(-age, -age_o, -iid, -type, -race_explained, -race_explained_o, -positive_rate, -match_rate)) %>%
+  drop_na() %>% 
+  mutate(gender = as.factor(gender),
+         samerace = as.factor(samerace),
          match = as.factor(match))
-
-colnames(SD)
-#cols <- c('iid', 'gender', 'age', 'age_o', 'race_explained', 'race_explained_o', 'samerace', 'pf_o_att', 'pf_o_sin', 'pf_o_int', 'pf_o_fun', 'pf_o_amb', 'pf_o_sha', 'attr1_1', 'sinc1_1', 'intel1_1', 'amb1_1', 'shar1_1', 'attr', 'sinc', 'intel', 'amb', 'shar', 'attr_o', 'sinc_o', 'intel_o', 'amb_o', 'shar_o', 'like', 'like_o', 'prob', 'prob_o', 'match')
-
+  
 sum(is.na(data)); dim(SD); dim(data); colnames(data)
 
 levels(data$match) # Need to change the levels because the models view the first level as positive
@@ -219,3 +354,4 @@ final_results %>% collect_predictions() %>%
 
 
 
+>>>>>>> b8dcfa91156edf0dad14913496e588ac2bf90a97
