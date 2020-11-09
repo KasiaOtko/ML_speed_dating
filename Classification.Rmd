@@ -19,6 +19,42 @@ SampleWeight <- function(target, weights) {
   return (weight_per_sample)
 }
 
+
+l2_reg <- function(train_source, train_target, test_source, test_target, lambda, weights, tresh) {
+
+    # train model
+    net <- glmnet(data.matrix(train_source), 
+                        data.matrix(train_target), 
+                        alpha = 0,                             
+                        lambda = lambda, 
+                        weights = weights)
+    
+    # train error
+    train_res = predict(net, data.matrix(train_source) ,s=lambda)
+    train_res[train_res < tresh] = 0
+    train_res[train_res >= tresh] = 1
+    train_error = 1 - (sum(train_res == train_target) / length(train_target))
+    
+    # test error
+    test_res = predict(net, data.matrix(test_source) ,s=lambda)
+    test_res[test_res < tresh] = 0
+    test_res[test_res >= tresh] = 1
+    test_error = 1 - (sum(test_res == test_target) / length(test_target))
+    return (list(train_error, test_error))
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
 # data loading
 
 data <- read.csv('/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating/SD_clean.csv')
@@ -44,8 +80,9 @@ best_lambda_lasso <- l1_net$lambda.1se  # largest lambda in 1 SE
 lasso_coef <- l1_net$glmnet.fit$beta[,  # retrieve coefficients
               l1_net$glmnet.fit$lambda  # at lambda.1se
               == best_lambda_lasso]
-features_to_use = unique(c(feature_names, colnames(x)[which(lasso_coef != 0)]))
 
+# adds features to use from manual selection and automatic
+features_to_use = unique(c(feature_names, colnames(x)[which(lasso_coef != 0)]))
 x = x[ , which(colnames(x) %in% features_to_use)]
 
 ```
@@ -61,24 +98,30 @@ weights_per_class = 1 / (table(y) / length(y))
 transformed_data = as.data.frame(cbind(x, match=y))
 outer_nb_folds = 10
 inner_nb_folds = 10
-nb_models = 10
+tresh = 0.5
+
+
+params = seq(0, 1, by = 0.1)
+nb_params = length(params)
+
+
 folds <- nested_cv(transformed_data, 
                      outside = vfold_cv(strata = match,  v = outer_nb_folds), 
                      inside = vfold_cv(strata = match,  v = inner_nb_folds))
 
-
-
+best_model_hyperparam = rep(0, nb_params - 1)
+error_per_fold = rep(0, outer_nb_folds)
 
 # outer fold
 for (i in 1:outer_nb_folds) {
   # divides in outer train/test
-
   outer_data = folds$splits[[i]]$data
   idx_outer_train = folds$splits[[i]]$in_id
   idx_outer_test = -which(as.numeric(rownames(outer_data)) %in% idx_outer_train)
   outer_train = outer_data[idx_outer_train, ]
   outer_test = outer_data[idx_outer_test, ]
-
+  inner_error = matrix(0L, nrow = inner_nb_folds, ncol = nb_params)
+  
   # inner fold
   for (j in 1:inner_nb_folds) {
     # divides in inner train/test
@@ -88,14 +131,35 @@ for (i in 1:outer_nb_folds) {
     inner_train = inner_data[idx_inner_train, ]
     inner_test = inner_data[idx_inner_train, ]
     
-    # model train
-    for (k in 1:nb_models) {
+    # hyperparam optim
+    for (k in 1:nb_params) {
       weights_inner = SampleWeight(inner_train[, ncol(inner_train)], weights_per_class)
+      # train/test
+      error = l2_reg(inner_train[, -ncol(inner_train)],
+                     inner_train[, ncol(inner_train)],
+                     inner_test[, -ncol(inner_test)],
+                     inner_test[, ncol(inner_test)],
+                     params[k],
+                     weights_inner, 
+                     tresh)
+      # validation error 
+      inner_error[j, k] = error[[2]]
       
+
     }
   }
-
+  # calculates avg error for each model and trains once more
+  min_idx = which.min(colMeans(inner_error))
+  best_model_hyperparam[i] = min_idx
   weights_outer = SampleWeight(outer_train[, ncol(outer_train)], weights_per_class)
+  error = l2_reg(outer_train[, -ncol(outer_train)],
+                 outer_train[, ncol(outer_train)],
+                 outer_test[, -ncol(outer_test)],
+                 outer_test[, ncol(outer_test)],
+                 params[min_idx],
+                 weights_outer, 
+                 tresh)
+  error_per_fold[i] = error[[2]]
 
 }
 
