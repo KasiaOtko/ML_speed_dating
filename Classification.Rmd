@@ -1,4 +1,4 @@
-in---
+---
 title: "SD_project2"
 author: "Katarzyna Otko"
 date: "3 11 2020"
@@ -354,3 +354,4 @@ final_results %>% collect_predictions() %>%
 
 
 
+>>>>>>> b8dcfa91156edf0dad14913496e588ac2bf90a97
