@@ -17,6 +17,7 @@ setwd("C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/ML_speed_d
 SD <- read.csv('SD_clean.csv')
 
 # percentage of getting dec_o = 1 (if a participant had 10 dates and 5 partners chose dec = 1, then positive rate = 50%)
+positive_rate <- SD %>% subset(select = c('iid', 'dec', 'dec_o')) %>%
   group_by(iid) %>%
   summarise(Rate = sum(dec_o)/n())
 
@@ -206,6 +207,7 @@ nb_params = length(params)
 best_model_hyperparam = rep(0, (nb_params - 1))
 error_per_fold = rep(0, outer_nb_folds)
 
+set.seed(123)
 # creates nested crossvalidation both inside and outside fold is stratified
 folds <- nested_cv(transformed_data, 
                      outside = vfold_cv(v = outer_nb_folds), 
@@ -257,10 +259,10 @@ for (i in 1:outer_nb_folds) {
 }
 
 # for table for project 2
-l2_gen_error = mean(error_per_fold)
-l2_error_per_fold = error_per_fold
-l2_params = params
-l2_best_hyperparam_per_fold = best_model_hyperparam
+l2_gen_error = mean(error_per_fold); l2_gen_error
+l2_error_per_fold = error_per_fold; l2_error_per_fold
+l2_params = params; l2_params
+l2_best_hyperparam_per_fold = best_model_hyperparam; l2_best_hyperparam_per_fold
 ```
 
 ```{r}
@@ -287,6 +289,7 @@ nb_params = length(params)
 best_model_hyperparam = rep(0, (nb_params - 1))
 error_per_fold = rep(0, outer_nb_folds)
 
+set.seed(123)
 # creates nested crossvalidation both inside and outside fold is stratified
 folds <- nested_cv(transformed_data, 
                      outside = vfold_cv(v = outer_nb_folds), 
