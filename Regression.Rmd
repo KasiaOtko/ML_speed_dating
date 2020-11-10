@@ -433,8 +433,8 @@ for (i in 1:outer_nb_folds) {
   # calculates avg error for each model in inner fold and trains once more where the generalization error is minimum
   min_idx = which.min(colMeans(inner_error))
   best_model_hyperparam[i] = min_idx
-  error = ann(inner_train,
-                 inner_test,
+  error = ann(outer_train,
+                 outer_test,
                  params[min_idx])
   error_per_fold[i] = error[[2]]
   print(i)
@@ -487,6 +487,9 @@ best_model_hyperparam = min_idx
 
 
 
+```{r}
+
+```
 
 
 
