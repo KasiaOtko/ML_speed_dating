@@ -9,6 +9,7 @@ output: html_document
 library(data.table)    # provides enhanced data.frame
 library(ggplot2)       # plotting
 library(glmnet)        # ridge, elastic net, and lasso 
+library(FNN)           # KNN
 library(R.utils)
 library(tidymodels)
 
@@ -50,7 +51,11 @@ l2_reg <- function(train_source, train_target, test_source, test_target, lambda,
 ######################################################
 # data loading
 #####################################################
+# Alvils
 data <- read.csv('/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating/SD_clean.csv')
+# Kasia
+setwd("C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/ML_speed_dating")
+data <- read.csv('SD_clean.csv')
 
 # removes columns that are irrevelant
 rm_cols = c("X","iid", "id", "idg", "condtn", "wave", "round", "position",  "order", "partner", "pid", "field", "field_cd",  "race", "from", "zipcode", "career", "career_c", "dec", "match_es", "satis_2", "length", "numdat_2", 'race', 'race_o', 'field_cd', 'field', 'int_corr', "dec_o", "race_explained","race_explained_o", "field_explained", "met", "met_o", "like", "like_o")
@@ -105,6 +110,7 @@ error_per_fold = rep(0, outer_nb_folds)
 # nested crossval
 #################
 
+set.seed(123)
 # creates nested crossvalidation both inside and outside fold is stratified
 folds <- nested_cv(transformed_data, 
                      outside = vfold_cv(strata = match,  v = outer_nb_folds), 
@@ -162,10 +168,10 @@ for (i in 1:outer_nb_folds) {
 }
 
 # for table for project 2
-l2_gen_error = mean(error_per_fold)
-l2_error_per_fold = error_per_fold
-l2_params = params
-l2_best_hyperparam_per_fold = best_model_hyperparam
+l2_gen_error = mean(error_per_fold); l2_gen_error
+l2_error_per_fold = error_per_fold; l2_error_per_fold
+l2_params = params; l2_params
+l2_best_hyperparam_per_fold = best_model_hyperparam; l2_best_hyperparam_per_fold
 
 ######################################
 ## final param selection using crossval
@@ -173,10 +179,191 @@ l2_best_hyperparam_per_fold = best_model_hyperparam
 weights = SampleWeight(y, weights_per_class)
 l2_net <- cv.glmnet(data.matrix(x), data.matrix(y), family="binomial", alpha=0, lambda = params, weights = weights)
 best_lambda_l2 <- l2_net$lambda.1se  # largest lambda in 1 SE
-
+best_lambda_l2
 
 
 ```
+
+
+
+# KNN
+
+```{r}
+
+# nested cross-validation
+k_params <- c(2:5)
+nb_params <- length(k_params)
+outer_nb_folds <- 10
+inner_nb_folds <- 10
+best_model_hyperparam = rep(0, (nb_params - 1))
+error_per_fold = rep(0, outer_nb_folds)
+
+
+#################
+# nested crossval
+#################
+set.seed(123)
+# creates nested crossvalidation both inside and outside fold is stratified
+folds <- nested_cv(transformed_data, 
+                     outside = vfold_cv(strata = match,  v = outer_nb_folds), 
+                     inside = vfold_cv(strata = match,  v = inner_nb_folds))
+
+
+# outer fold 
+for (i in 1:outer_nb_folds) {
+  # divides in outer train/test
+  outer_data = folds$splits[[i]]$data
+  idx_outer_train = folds$splits[[i]]$in_id
+  idx_outer_test = -which(as.numeric(rownames(outer_data)) %in% idx_outer_train)
+  outer_train = outer_data[idx_outer_train, ]
+  outer_test = outer_data[idx_outer_test, ]
+  inner_error = matrix(0L, nrow = inner_nb_folds, ncol = nb_params)
+  
+  # inner fold
+  for (j in 1:inner_nb_folds) {
+    # divides in inner train/test
+    inner_data = folds$inner_resamples[[i]]$splits[[j]]$data
+    idx_inner_train = folds$inner_resamples[[i]]$splits[[j]]$in_id
+    idx_inner_test = -which(as.numeric(rownames(inner_data)) %in% idx_inner_train)
+    inner_train = inner_data[idx_inner_train, ]
+    inner_test = inner_data[idx_inner_test, ]
+    
+    # hyperparam optim
+    for (k in 1:nb_params) {
+      x_inner_train <- inner_train[, 1:(ncol(inner_train) - 1)]
+      y_inner_train <- inner_train[, 'match']
+      x_inner_test <- inner_test[, 1:(ncol(inner_train) - 1)]
+      y_inner_test <- inner_test[, 'match']
+      
+      # trains model and gets a test error
+      y_pred <- knn(x_inner_train, 
+                    x_inner_test, 
+                    y_inner_train,
+                    k = k_params[k],
+                    algorithm = "kd_tree")
+      
+      # inner error for each inner fold
+      inner_error[j, k] <- 1 - (sum(y_pred == y_inner_test) / length(y_inner_test))
+    }
+  }
+  
+  # calculates avg error for each model in inner fold and trains once more where the generalization error is minimum
+  min_idx = which.min(colMeans(inner_error))
+  best_model_hyperparam[i] = min_idx
+  
+  x_outer_train <- outer_train[, 1:(ncol(outer_train) - 1)]
+  y_outer_train <- outer_train[, 'match']
+  x_outer_test <- outer_test[, 1:(ncol(outer_train) - 1)]
+  y_outer_test <- outer_test[, 'match']
+      
+  # trains model and gets a test error
+  y_pred <- knn(x_outer_train, 
+                x_outer_test, 
+                y_outer_train,
+                k = k_params[min_idx],
+                algorithm = "kd_tree")
+  error_per_fold[i] <- 1 - (sum(y_pred == y_outer_test) / length(y_outer_test))
+
+}
+
+knn_gen_error = mean(error_per_fold)
+knn_error_per_fold = error_per_fold
+knn_params = k_params
+knn_best_hyperparam_per_fold = k_params[best_model_hyperparam]
+
+######################################
+## final param selection using crossval
+######################################
+weights = SampleWeight(y, weights_per_class)
+l2_net <- cv.glmnet(data.matrix(x), data.matrix(y), family="binomial", alpha=0, lambda = params, weights = weights)
+best_lambda_l2 <- l2_net$lambda.1se 
+
+
+dim(inner_train)
+
+```
+
+
+# Baseline
+
+```{r}
+
+base <- function(train_source, train_target, test_source, test_target) {
+    train_counts <- as.data.frame(table(train_target))
+    most_frequent_class <- train_counts[which.max(train_counts$Freq), 'train_target'] %>% as.character() %>% as.numeric()
+    # train error
+    train_error = 1 - (sum(train_target == most_frequent_class) / length(train_target))
+    # test error
+    test_error = 1 - (sum(test_target == most_frequent_class) / length(test_target))
+    return (list(train_error, test_error))
+}
+
+
+outer_nb_folds = 10
+inner_nb_folds = 10
+params = c(1)
+nb_params = length(params)
+best_model_hyperparam = rep(0, (nb_params - 1))
+error_per_fold = rep(0, outer_nb_folds)
+
+set.seed(123)
+# creates nested crossvalidation both inside and outside fold is stratified
+folds <- nested_cv(transformed_data, 
+                     outside = vfold_cv(v = outer_nb_folds), 
+                     inside = vfold_cv(v = inner_nb_folds))
+
+
+# outer fold 
+for (i in 1:outer_nb_folds) {
+  # divides in outer train/test
+  outer_data = folds$splits[[i]]$data
+  idx_outer_train = folds$splits[[i]]$in_id
+  idx_outer_test = -which(as.numeric(rownames(outer_data)) %in% idx_outer_train)
+  outer_train = outer_data[idx_outer_train, ]
+  outer_test = outer_data[idx_outer_test, ]
+  inner_error = matrix(0L, nrow = inner_nb_folds, ncol = nb_params)
+  
+  # inner fold
+  for (j in 1:inner_nb_folds) {
+    # divides in inner train/test
+    inner_data = folds$inner_resamples[[i]]$splits[[j]]$data
+    idx_inner_train = folds$inner_resamples[[i]]$splits[[j]]$in_id
+    idx_inner_test = -which(as.numeric(rownames(inner_data)) %in% idx_inner_train)
+    inner_train = inner_data[idx_inner_train, ]
+    inner_test = inner_data[idx_inner_test, ]
+    # hyperparam optim
+    for (k in 1:nb_params) {
+      # trains model and gets train and test error
+      error = base(inner_train[, -ncol(inner_train)],
+                     inner_train[, ncol(inner_train)],
+                     inner_test[, -ncol(inner_test)],
+                     inner_test[, ncol(inner_test)])
+      # inner error for each inner fold
+      inner_error[j, k] = error[[2]]
+    }
+  }
+  
+  # calculates avg error for each model in inner fold and trains once more where the generalization error is minimum
+  min_idx = which.min(colMeans(inner_error))
+  best_model_hyperparam[i] = min_idx
+  error = base(outer_train[, -ncol(outer_train)],
+                 outer_train[, ncol(outer_train)],
+                 outer_test[, -ncol(outer_test)],
+                 outer_test[, ncol(outer_test)])
+  error_per_fold[i] = error[[2]]
+
+}
+
+# for table for project 2
+base_gen_error = mean(error_per_fold); base_gen_error
+base_error_per_fold = error_per_fold; base_error_per_fold
+base_params = params; base_params
+base_best_hyperparam_per_fold = best_model_hyperparam; base_best_hyperparam_per_fold
+
+colnames(inner_data)
+```
+
+
 
 
 
