@@ -20,7 +20,7 @@ library(tidymodels)
 library(neuralnet) #install.packages("neuralnet")
 
 
-setwd("C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/ML_speed_dating")
+setwd("/home/nomow/Documents/DTU/Intro_to_machine_learning/ML_speed_dating")
 
 SD <- read.csv('SD_clean.csv')
 
@@ -491,6 +491,98 @@ best_model_hyperparam = min_idx
 
 
 ```{r}
+##############
+# t test 
+##############
+set.seed(123)
+
+nb_folds = 30
+folds = vfold_cv(transformed_data, v = nb_folds)
+# ann
+error_per_fold = matrix(0L, nrow = nb_folds, ncol = 1)
+nb_hidden_units = 8
+for (i in 1:nb_folds) {
+  # divides in outer train/test
+  fold_data = folds$splits[[i]]$data
+  idx_train = folds$splits[[i]]$in_id
+  idx_test = -which(as.numeric(rownames(fold_data)) %in% idx_train)
+  train = fold_data[idx_train, ]
+  test = fold_data[idx_test, ]
+  # trains model and gets train and test error
+  error = ann(train,
+              test,
+              nb_hidden_units)
+  # inner error for each inner fold
+  error_per_fold[i, 1] = error[[2]]
+
+
+}
+ann_error_per_fold_ttest = error_per_fold
+ann_gen_error_ttest = mean(error_per_fold)
+
+
+error_per_fold = matrix(0L, nrow = nb_folds, ncol = 1)
+nb_hidden_units = 8
+for (i in 1:nb_folds) {
+  # divides in outer train/test
+  fold_data = folds$splits[[i]]$data
+  idx_train = folds$splits[[i]]$in_id
+  idx_test = -which(as.numeric(rownames(fold_data)) %in% idx_train)
+  train = fold_data[idx_train, ]
+  test = fold_data[idx_test, ]
+  # trains model and gets train and test error
+  error = base(train[, -ncol(train)],
+                     train[, ncol(train)],
+                     test[, -ncol(test)],
+                     test[, ncol(test)])
+  # inner error for each inner fold
+  error_per_fold[i, 1] = error[[2]]
+
+
+}
+base_error_per_fold_ttest = error_per_fold
+base_gen_error_ttest = mean(error_per_fold)
+
+
+error_per_fold = matrix(0L, nrow = nb_folds, ncol = 1)
+lambda = 0
+for (i in 1:nb_folds) {
+  # divides in outer train/test
+  fold_data = folds$splits[[i]]$data
+  idx_train = folds$splits[[i]]$in_id
+  idx_test = -which(as.numeric(rownames(fold_data)) %in% idx_train)
+  train = fold_data[idx_train, ]
+  test = fold_data[idx_test, ]
+  # trains model and gets train and test error
+  error = l2_reg(train[, -ncol(train)],
+                     train[, ncol(train)],
+                     test[, -ncol(test)],
+                     test[, ncol(test)],
+                     lambda)
+  # inner error for each inner fold
+  error_per_fold[i, 1] = error[[2]]
+
+
+}
+l2_error_per_fold_ttest = error_per_fold
+l2_gen_error_ttest = mean(error_per_fold)
+
+
+
+# ann vs base
+z = ann_error_per_fold_ttest - base_error_per_fold_ttest
+ttest_ann_base = t.test(z, alternative = "two.sided", alpha=0.05)
+
+
+# l2 vs base
+z = l2_error_per_fold_ttest - base_error_per_fold_ttest
+ttest_l2_base = t.test(z, alternative = "two.sided", alpha=0.05)
+
+
+# ann vs l2
+z = ann_error_per_fold_ttest - l2_error_per_fold_ttest
+ttest_ann_l2 = t.test(z, alternative = "two.sided", alpha=0.05)
+
 
 ```
 

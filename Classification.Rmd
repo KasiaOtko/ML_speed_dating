@@ -99,7 +99,7 @@ transformed_data = as.data.frame(cbind(x, match=y))
 outer_nb_folds = 10
 inner_nb_folds = 10
 tresh = 0.5
-params = seq(0, 1, by = 0.1)
+params = seq(0, 1, by = 0.01)
 nb_params = length(params)
 best_model_hyperparam = rep(0, (nb_params - 1))
 error_per_fold = rep(0, outer_nb_folds)
@@ -110,7 +110,7 @@ error_per_fold = rep(0, outer_nb_folds)
 # nested crossval
 #################
 
-set.seed(123)
+set.seed(999)
 # creates nested crossvalidation both inside and outside fold is stratified
 folds <- nested_cv(transformed_data, 
                      outside = vfold_cv(strata = match,  v = outer_nb_folds), 
