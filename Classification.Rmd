@@ -44,7 +44,7 @@ l2_reg <- function(train_source, train_target, test_source, test_target, lambda,
     test_res[test_res < tresh] = 0
     test_res[test_res >= tresh] = 1
     test_error = 1 - (sum(test_res == test_target) / length(test_target))
-    return (list(train_error, test_error))
+    return (list(train_error, test_error, test_res))
 }
 
 
@@ -84,7 +84,16 @@ lasso_coef <- l1_net$glmnet.fit$beta[,  # retrieve coefficients
 features_to_use = unique(c(feature_names, colnames(x)[which(lasso_coef != 0)]))
 x = x[ , which(colnames(x) %in% features_to_use)]
 
+
+colnames(l1_net$glmnet.fit$beta)
+l1_net$lambda
+sort(round(lasso_coef, 2))
+
+
 ```
+
+
+# Regularized logistic regression
 
 ```{r}
 ##########################
@@ -104,7 +113,7 @@ nb_params = length(params)
 best_model_hyperparam = rep(0, (nb_params - 1))
 error_per_fold = rep(0, outer_nb_folds)
 
-
+y_hat_lr <- rep(NA, nrow(transformed_data))
 
 #################
 # nested crossval
@@ -164,6 +173,8 @@ for (i in 1:outer_nb_folds) {
                  weights_outer, 
                  tresh)
   error_per_fold[i] = error[[2]]
+  # obtains predictions for McNemar test
+  y_hat_lr[idx_outer_test] <- error[[3]]
 
 }
 
@@ -181,9 +192,37 @@ l2_net <- cv.glmnet(data.matrix(x), data.matrix(y), family="binomial", alpha=0, 
 best_lambda_l2 <- l2_net$lambda.1se  # largest lambda in 1 SE
 best_lambda_l2
 
+ridge_coef <- l2_net$glmnet.fit$beta[,  # retrieve coefficients
+              l2_net$glmnet.fit$lambda  # at lambda.1se
+              == best_lambda_l2]
+
+ridge_coef <- sort(ridge_coef, decreasing = T) %>% as.data.frame()
+colnames(ridge_coef) <- 'Coefficient'
+
+ridge_coef[order(Coefficient),]
+
+ridge_coef  %>%
+  ggplot(aes(y = reorder(rownames(ridge_coef), Coefficient), x = Coefficient)) + 
+  geom_point() + 
+  geom_vline(xintercept = 0, lty = 2) +
+  ylab("Feature") + ggtitle("Logistic regression coefficients") +
+  theme_minimal() + # Changing theme
+  theme(plot.title = element_text(hjust = 0.5), # Centers title
+        axis.title.y = element_text(margin = margin(t = 0, r = 10, b = 0, l = 0), size = 12), # x/y labels position
+        axis.title.x = element_text(margin = margin(t = 10, r = 0, b = 0, l = 0), size = 12))
+
+coeffs <- sort(rowMeans(l2_net$glmnet.fit$beta), decreasing = TRUE)
+coeffs_to_plot <- coeffs[c(1:8, 57)] %>% as.data.frame()
+coeffs_to_plot 
+
+coeffs_to_plot %>% ggplot(aes(y = rownames(coeffs_to_plot), x = .)) + geom_point()
+
+
+length(coeffs)
+
+
 
 ```
-
 
 
 # KNN
@@ -191,13 +230,15 @@ best_lambda_l2
 ```{r}
 
 # nested cross-validation
-k_params <- c(2:5)
+transformed_data = as.data.frame(cbind(x, match=y))
+k_params <- c(1, 3, 5, 7)
 nb_params <- length(k_params)
 outer_nb_folds <- 10
 inner_nb_folds <- 10
 best_model_hyperparam = rep(0, (nb_params - 1))
 error_per_fold = rep(0, outer_nb_folds)
 
+y_hat_knn <- rep(NA, nrow(transformed_data))
 
 #################
 # nested crossval
@@ -263,13 +304,18 @@ for (i in 1:outer_nb_folds) {
                 k = k_params[min_idx],
                 algorithm = "kd_tree")
   error_per_fold[i] <- 1 - (sum(y_pred == y_outer_test) / length(y_outer_test))
+  
+  # obtains predictions for McNemar test
+  y_hat_knn[idx_outer_test] <- as.numeric(as.character(y_pred))
 
 }
 
-knn_gen_error = mean(error_per_fold)
-knn_error_per_fold = error_per_fold
-knn_params = k_params
-knn_best_hyperparam_per_fold = k_params[best_model_hyperparam]
+table(y_pred, y_outer_test)
+
+knn_gen_error = mean(error_per_fold); knn_gen_error
+knn_error_per_fold = error_per_fold; knn_error_per_fold
+knn_params = k_params; knn_params
+knn_best_hyperparam_per_fold = k_params[best_model_hyperparam]; knn_best_hyperparam_per_fold
 
 ######################################
 ## final param selection using crossval
@@ -295,7 +341,7 @@ base <- function(train_source, train_target, test_source, test_target) {
     train_error = 1 - (sum(train_target == most_frequent_class) / length(train_target))
     # test error
     test_error = 1 - (sum(test_target == most_frequent_class) / length(test_target))
-    return (list(train_error, test_error))
+    return (list(train_error, test_error, most_frequent_class))
 }
 
 
@@ -305,6 +351,8 @@ params = c(1)
 nb_params = length(params)
 best_model_hyperparam = rep(0, (nb_params - 1))
 error_per_fold = rep(0, outer_nb_folds)
+
+y_hat_base <- rep(NA, nrow(transformed_data))
 
 set.seed(123)
 # creates nested crossvalidation both inside and outside fold is stratified
@@ -346,11 +394,16 @@ for (i in 1:outer_nb_folds) {
   # calculates avg error for each model in inner fold and trains once more where the generalization error is minimum
   min_idx = which.min(colMeans(inner_error))
   best_model_hyperparam[i] = min_idx
+  #class0_to_1 <- 
+  
   error = base(outer_train[, -ncol(outer_train)],
                  outer_train[, ncol(outer_train)],
                  outer_test[, -ncol(outer_test)],
                  outer_test[, ncol(outer_test)])
   error_per_fold[i] = error[[2]]
+
+  # obtains predictions for McNemar test
+  y_hat_base[idx_outer_test] <- rep(error[[3]], length(outer_test[, ncol(outer_test)]))
 
 }
 
@@ -360,12 +413,244 @@ base_error_per_fold = error_per_fold; base_error_per_fold
 base_params = params; base_params
 base_best_hyperparam_per_fold = best_model_hyperparam; base_best_hyperparam_per_fold
 
-colnames(inner_data)
+```
+
+
+# Statistical evaluation
+
+```{r}
+source("C:/Users/katin/Desktop/Folder/STUDIA/DTU/Semestr I/Intro to ML/02450Toolbox_R/setup.R")
+
+models <- list(y_hat_lr, y_hat_knn, y_hat_base)
+alpha <- c(0.01, 0.05, 0.1)
+pvalues <- rep(NA, 3)
+names(pvalues) <- c('lr_knn', 'lr_base', 'knn_base')
+CIs <- list()
+for (a in 1:3) {
+  CIs[[a]] <- matrix(NA, 3, 2); rownames(CIs[[a]]) = c('lr_knn', 'lr_base', 'knn_base')
+  rt_lr_knn <- mcnemar(transformed_data[,'match'], models[[1]], models[[2]], alpha=alpha[a])
+  pvalues[1] <- rt_lr_knn$p
+  CIs[[a]][1,] <- rt_lr_knn$CI
+  
+  rt_lr_base <- mcnemar(transformed_data[,'match'], models[[1]], models[[3]], alpha=alpha[a])
+  pvalues[2] <- rt_lr_base$p
+  CIs[[a]][2,] <- rt_lr_base$CI
+  
+  rt_knn_base <- mcnemar(transformed_data[,'match'], models[[2]], models[[3]], alpha=alpha[a])
+  pvalues[3] <- rt_knn_base$p
+  CIs[[a]][3,] <- rt_knn_base$CI
+
+}
+names(CIs) <- c('alpha = 0.01', 'alpha = 0.05', 'alpha = 0.1')
+CIs
+round(pvalues, 3)
+
 ```
 
 
 
+# Unnecessary stuff
 
+```{r}
+transformed_data = as.data.frame(cbind(x, match=y))
+
+# KNN
+k_params <- c(1)
+nb_params <- length(k_params)
+outer_nb_folds <- 10
+inner_nb_folds <- 10
+error_per_param = rep(0, nb_params)
+Error_test_knn <- matrix(nrow = nb_params, ncol = outer_nb_folds)
+y_hat_knn <- rep(NA, nrow(transformed_data))
+
+set.seed(123)
+
+folds <- nested_cv(transformed_data, 
+                     outside = vfold_cv(strata = match,  v = outer_nb_folds), 
+                     inside = vfold_cv(strata = match,  v = inner_nb_folds))
+
+for (k in 1:nb_params) {
+  
+    for (i in 1:outer_nb_folds) {
+
+      outer_data = folds$splits[[i]]$data
+      idx_outer_train = folds$splits[[i]]$in_id
+      idx_outer_test = -which(as.numeric(rownames(outer_data)) %in% idx_outer_train)
+      outer_train = outer_data[idx_outer_train, ]
+      outer_test = outer_data[idx_outer_test, ]
+  
+      x_outer_train <- outer_train[, 1:(ncol(outer_train) - 1)]
+      y_outer_train <- outer_train[, 'match']
+      x_outer_test <- outer_test[, 1:(ncol(outer_train) - 1)]
+      y_outer_test <- outer_test[, 'match']
+          
+      y_pred <- knn(x_outer_train, 
+                    x_outer_test, 
+                    y_outer_train,
+                    k = k_params[k],
+                    algorithm = "kd_tree")
+      y_hat_knn[idx_outer_test] <- as.numeric(as.character(y_pred))
+      
+      Error_test_knn[k, i] <- 1 - (sum(y_pred == y_outer_test) / length(y_outer_test))
+   
+    }
+}
+
+# Regularized LR
+lr_params = 0.3
+nb_params <- length(lr_params)
+tresh = 0.5
+Error_test_lr <- matrix(nrow = nb_params, ncol = outer_nb_folds)
+y_hat_lr <- rep(NA, nrow(transformed_data))
+weights_per_class = 1 / (table(y) / length(y))
+
+set.seed(123)
+
+folds <- nested_cv(transformed_data, 
+                     outside = vfold_cv(strata = match,  v = outer_nb_folds), 
+                     inside = vfold_cv(strata = match,  v = inner_nb_folds))
+
+
+for (k in 1:nb_params) {
+  
+    for (i in 1:outer_nb_folds) {
+
+      outer_data = folds$splits[[i]]$data
+      idx_outer_train = folds$splits[[i]]$in_id
+      idx_outer_test = -which(as.numeric(rownames(outer_data)) %in% idx_outer_train)
+      outer_train = outer_data[idx_outer_train, ]
+      outer_test = outer_data[idx_outer_test, ]
+  
+      x_outer_train <- outer_train[, 1:(ncol(outer_train) - 1)]
+      y_outer_train <- outer_train[, 'match']
+      x_outer_test <- outer_test[, 1:(ncol(outer_train) - 1)]
+      y_outer_test <- outer_test[, 'match']
+      
+      weights_outer = SampleWeight(outer_train[, ncol(outer_train)], weights_per_class)
+
+      error = l2_reg(outer_train[, -ncol(outer_train)],
+                     outer_train[, ncol(outer_train)],
+                     outer_test[, -ncol(outer_test)],
+                     outer_test[, ncol(outer_test)],
+                     lr_params[k],
+                     weights_outer, 
+                     tresh)
+      y_hat_lr[idx_outer_test] <- error[[3]]
+      
+      Error_test_lr[k, i] <- error[[2]]
+   
+    }
+}
+
+
+# Baseline
+
+base_params = 1
+nb_params <- length(base_params)
+Error_test_base <- matrix(nrow = nb_params, ncol = outer_nb_folds)
+y_hat_base <- rep(NA, nrow(transformed_data))
+
+for (k in 1:nb_params) {
+  
+    for (i in 1:outer_nb_folds) {
+
+      outer_data = folds$splits[[i]]$data
+      idx_outer_train = folds$splits[[i]]$in_id
+      idx_outer_test = -which(as.numeric(rownames(outer_data)) %in% idx_outer_train)
+      outer_train = outer_data[idx_outer_train, ]
+      outer_test = outer_data[idx_outer_test, ]
+      #error = matrix(0L, nrow = outer_nb_folds, ncol = nb_params)
+  
+      x_outer_train <- outer_train[, 1:(ncol(outer_train) - 1)]
+      y_outer_train <- outer_train[, 'match']
+      x_outer_test <- outer_test[, 1:(ncol(outer_train) - 1)]
+      y_outer_test <- outer_test[, 'match']
+          
+      # trains model and gets a test error
+      
+      error = base(outer_train[, -ncol(outer_train)],
+                     outer_train[, ncol(outer_train)],
+                     outer_test[, -ncol(outer_test)],
+                     outer_test[, ncol(outer_test)])
+      # inner error for each inner fold
+      Error_test_base[k, i] = error[[2]]
+      y_hat_base[idx_outer_test] <- rep(0, length(outer_test[, ncol(outer_test)]))
+   
+    }
+}
+
+
+
+length(y_hat_base)
+```
+
+
+
+# KNN one-layer CV
+
+```{r}
+k_params <- c(3)
+nb_params <- length(k_params)
+outer_nb_folds <- 10
+inner_nb_folds <- 10
+best_model_hyperparam = rep(0, (nb_params - 1))
+error_per_param = rep(0, nb_params)
+
+Error_test <- matrix(nrow = nb_params, ncol = outer_nb_folds)
+
+
+set.seed(123)
+# creates nested crossvalidation both inside and outside fold is stratified
+folds <- nested_cv(transformed_data, 
+                     outside = vfold_cv(strata = match,  v = outer_nb_folds), 
+                     inside = vfold_cv(strata = match,  v = inner_nb_folds))
+
+
+# outer fold 
+for (k in 1:nb_params) {
+  
+    for (i in 1:outer_nb_folds) {
+
+      outer_data = folds$splits[[i]]$data
+      idx_outer_train = folds$splits[[i]]$in_id
+      idx_outer_test = -which(as.numeric(rownames(outer_data)) %in% idx_outer_train)
+      outer_train = outer_data[idx_outer_train, ]
+      outer_test = outer_data[idx_outer_test, ]
+      #error = matrix(0L, nrow = inner_nb_folds, ncol = nb_params)
+  
+      x_outer_train <- outer_train[, 1:(ncol(outer_train) - 1)]
+      y_outer_train <- outer_train[, 'match']
+      x_outer_test <- outer_test[, 1:(ncol(outer_train) - 1)]
+      y_outer_test <- outer_test[, 'match']
+          
+      # trains model and gets a test error
+      y_pred <- knn(x_outer_train, 
+                    x_outer_test, 
+                    y_outer_train,
+                    k = k_params[k],
+                    algorithm = "kd_tree")
+      
+      Error_test[k, i] <- 1 - (sum(y_pred == y_outer_test) / length(y_outer_test))
+   
+    }
+}
+
+table(y_pred, y_outer_test)
+
+result <- rowMeans(Error_test)
+plot(k_params, result, type = 'l', xlab = 'K', ylab = 'Test error')
+
+
+  
+  # calculates avg error for each model in inner fold and trains once more where the generalization error is minimum
+  min_idx = which.min(error_per_param)
+  best_model_hyperparam[i] = min_idx
+  
+
+
+}
+
+```
 
 
 
